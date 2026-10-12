@@ -32,7 +32,6 @@ SpiAnalyzerSettings::SpiAnalyzerSettings()
     mEnableChannelInterface.reset( new AnalyzerSettingInterfaceChannel() );
     mEnableChannelInterface->SetTitleAndTooltip( "Enable", "Enable (SS, Slave Select)" );
     mEnableChannelInterface->SetChannel( mEnableChannel );
-    for (U32 i = 0; i < 3; ++i) mExtraCSInterfaces[i]->SetChannel(mExtraCS[i]);
     mEnableChannelInterface->SetSelectionOfNoneIsAllowed( true );
 
     for (U32 i = 0; i < 3; ++i) {
