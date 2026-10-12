@@ -25,3 +25,9 @@ src/SpiSimulationDataGenerator.h
 )
 
 add_analyzer_plugin(logic2_spi_multics SOURCES ${SOURCES})
+
+# Separate plugin: its legacy frames never overlap the SPI analyzer frames.
+set(MUX_SELECTION_SOURCES
+   src/MuxSelectionAnalyzer.cpp
+)
+add_analyzer_plugin(logic2_mux_selection SOURCES ${MUX_SELECTION_SOURCES})
