@@ -24,6 +24,7 @@ void SpiAnalyzer::SetupResults()
       mResults->AddChannelBubblesWillAppearOn(mSettings->mMosiChannel);
    if (mSettings->mMisoChannel != UNDEFINED_CHANNEL)
       mResults->AddChannelBubblesWillAppearOn(mSettings->mMisoChannel);
+   mResults->AddChannelBubblesWillAppearOn(mSettings->mMuxEnableChannel);
 }
 
 void SpiAnalyzer::SetupChannels()
@@ -144,6 +145,15 @@ void SpiAnalyzer::DecodeSelection(U64 start, U64 end, U32 cs)
          misoWord = 0;
       }
    }
+
+   // Legacy frame for a single transaction-wide bubble on the enable channel.
+   // The existing FrameV2 data table remains unchanged.
+   Frame selection = {};
+   selection.mStartingSampleInclusive = start;
+   selection.mEndingSampleInclusive = end;
+   selection.mData1 = cs;
+   selection.mFlags = 0x02;
+   mResults->AddFrame(selection);
 
    FrameV2 disable;
    disable.AddByteArray("cs", &csByte, 1);
