@@ -24,15 +24,11 @@ void SpiAnalyzerResults::GenerateBubbleText( U64 frame_index, Channel& channel,
 
     if( channel == mSettings->mMuxEnableChannel )
     {
-        if( ( frame.mFlags & 0x02 ) != 0 )
-        {
-            char label[16];
-            sprintf(label, "CS%02u", U32(frame.mData1));
-            AddResultString(label);
-        }
+        char label[16];
+        sprintf(label, "CS%02u", U32((frame.mFlags >> 4) & 15));
+        AddResultString(label);
         return;
     }
-    if( ( frame.mFlags & 0x02 ) != 0 ) return;
     if( ( frame.mFlags & SPI_ERROR_FLAG ) == 0 )
     {
         if( channel == mSettings->mMosiChannel )
