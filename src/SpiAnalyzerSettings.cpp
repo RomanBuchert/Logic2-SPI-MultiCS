@@ -44,6 +44,45 @@ SpiAnalyzerSettings::SpiAnalyzerSettings()
         mExtraCSInterfaces[i]->SetChannel(UNDEFINED_CHANNEL);
         mExtraCSInterfaces[i]->SetSelectionOfNoneIsAllowed(true);
     }
+    for (U32 i = 0; i < kClientCount; ++i) {
+        mClientShiftOrder[i] = AnalyzerEnums::MsbFirst;
+        mClientBitsPerTransfer[i] = 8;
+        mClientClockInactiveState[i] = BIT_LOW;
+        mClientDataValidEdge[i] = AnalyzerEnums::LeadingEdge;
+        mClientEnableActiveState[i] = BIT_LOW;
+    }
+    for (U32 i = 0; i < 3; ++i) {
+        std::stringstream prefix;
+        prefix << "CS" << (i + 1) << " ";
+        mClientShiftOrderInterfaces[i].reset(new AnalyzerSettingInterfaceNumberList());
+        mClientShiftOrderInterfaces[i]->SetTitleAndTooltip((prefix.str() + "Bit Order").c_str(), "");
+        mClientShiftOrderInterfaces[i]->AddNumber(AnalyzerEnums::MsbFirst, "MSB first", "");
+        mClientShiftOrderInterfaces[i]->AddNumber(AnalyzerEnums::LsbFirst, "LSB first", "");
+        mClientBitsInterfaces[i].reset(new AnalyzerSettingInterfaceNumberList());
+        mClientBitsInterfaces[i]->SetTitleAndTooltip((prefix.str() + "Bits per Transfer").c_str(), "");
+        for (U32 bits = 1; bits <= 64; ++bits) {
+            std::stringstream label;
+            label << bits << " bits";
+            mClientBitsInterfaces[i]->AddNumber(bits, label.str().c_str(), "");
+        }
+        mClientClockInterfaces[i].reset(new AnalyzerSettingInterfaceNumberList());
+        mClientClockInterfaces[i]->SetTitleAndTooltip((prefix.str() + "CPOL").c_str(), "");
+        mClientClockInterfaces[i]->AddNumber(BIT_LOW, "CPOL 0", "");
+        mClientClockInterfaces[i]->AddNumber(BIT_HIGH, "CPOL 1", "");
+        mClientPhaseInterfaces[i].reset(new AnalyzerSettingInterfaceNumberList());
+        mClientPhaseInterfaces[i]->SetTitleAndTooltip((prefix.str() + "CPHA").c_str(), "");
+        mClientPhaseInterfaces[i]->AddNumber(AnalyzerEnums::LeadingEdge, "CPHA 0", "");
+        mClientPhaseInterfaces[i]->AddNumber(AnalyzerEnums::TrailingEdge, "CPHA 1", "");
+        mClientPolarityInterfaces[i].reset(new AnalyzerSettingInterfaceNumberList());
+        mClientPolarityInterfaces[i]->SetTitleAndTooltip((prefix.str() + "CS Polarity").c_str(), "");
+        mClientPolarityInterfaces[i]->AddNumber(BIT_LOW, "Active low", "");
+        mClientPolarityInterfaces[i]->AddNumber(BIT_HIGH, "Active high", "");
+        mClientShiftOrderInterfaces[i]->SetNumber(mClientShiftOrder[i + 1]);
+        mClientBitsInterfaces[i]->SetNumber(mClientBitsPerTransfer[i + 1]);
+        mClientClockInterfaces[i]->SetNumber(mClientClockInactiveState[i + 1]);
+        mClientPhaseInterfaces[i]->SetNumber(mClientDataValidEdge[i + 1]);
+        mClientPolarityInterfaces[i]->SetNumber(mClientEnableActiveState[i + 1]);
+    }
     mShiftOrderInterface.reset( new AnalyzerSettingInterfaceNumberList() );
     mShiftOrderInterface->SetTitleAndTooltip( "Significant Bit", "" );
     mShiftOrderInterface->AddNumber( AnalyzerEnums::MsbFirst, "Most Significant Bit First (Standard)",
@@ -92,6 +131,13 @@ SpiAnalyzerSettings::SpiAnalyzerSettings()
     AddInterface( mClockChannelInterface.get() );
     AddInterface( mEnableChannelInterface.get() );
     for (U32 i = 0; i < 3; ++i) AddInterface(mExtraCSInterfaces[i].get());
+    for (U32 i = 0; i < 3; ++i) {
+        AddInterface(mClientShiftOrderInterfaces[i].get());
+        AddInterface(mClientBitsInterfaces[i].get());
+        AddInterface(mClientClockInterfaces[i].get());
+        AddInterface(mClientPhaseInterfaces[i].get());
+        AddInterface(mClientPolarityInterfaces[i].get());
+    }
     AddInterface( mShiftOrderInterface.get() );
     AddInterface( mBitsPerTransferInterface.get() );
     AddInterface( mClockInactiveStateInterface.get() );
@@ -147,12 +193,24 @@ bool SpiAnalyzerSettings::SetSettingsFromInterfaces()
     mEnableChannel = mEnableChannelInterface->GetChannel();
 
     for (U32 i = 0; i < 3; ++i) mExtraCS[i] = mExtraCSInterfaces[i]->GetChannel();
+    for (U32 i = 0; i < 3; ++i) {
+        mClientShiftOrder[i + 1] = (AnalyzerEnums::ShiftOrder)U32(mClientShiftOrderInterfaces[i]->GetNumber());
+        mClientBitsPerTransfer[i + 1] = U32(mClientBitsInterfaces[i]->GetNumber());
+        mClientClockInactiveState[i + 1] = (BitState)U32(mClientClockInterfaces[i]->GetNumber());
+        mClientDataValidEdge[i + 1] = (AnalyzerEnums::Edge)U32(mClientPhaseInterfaces[i]->GetNumber());
+        mClientEnableActiveState[i + 1] = (BitState)U32(mClientPolarityInterfaces[i]->GetNumber());
+    }
     mShiftOrder = ( AnalyzerEnums::ShiftOrder )U32( mShiftOrderInterface->GetNumber() );
     mBitsPerTransfer = U32( mBitsPerTransferInterface->GetNumber() );
     mClockInactiveState = ( BitState )U32( mClockInactiveStateInterface->GetNumber() );
     mDataValidEdge = ( AnalyzerEnums::Edge )U32( mDataValidEdgeInterface->GetNumber() );
     mEnableActiveState = ( BitState )U32( mEnableActiveStateInterface->GetNumber() );
 
+    mClientShiftOrder[0] = mShiftOrder;
+    mClientBitsPerTransfer[0] = mBitsPerTransfer;
+    mClientClockInactiveState[0] = mClockInactiveState;
+    mClientDataValidEdge[0] = mDataValidEdge;
+    mClientEnableActiveState[0] = mEnableActiveState;
     ClearChannels();
     AddChannel( mMosiChannel, "MOSI", mMosiChannel != UNDEFINED_CHANNEL );
     AddChannel( mMisoChannel, "MISO", mMisoChannel != UNDEFINED_CHANNEL );
@@ -188,6 +246,14 @@ void SpiAnalyzerSettings::LoadSettings( const char* settings )
         Channel channel;
         if (text_archive >> channel) mExtraCS[i] = channel;
     }
+    for (U32 i = 1; i < kClientCount; ++i) {
+        U32 value;
+        if (text_archive >> value) mClientShiftOrder[i] = (AnalyzerEnums::ShiftOrder)value;
+        if (text_archive >> value) mClientBitsPerTransfer[i] = value;
+        if (text_archive >> value) mClientClockInactiveState[i] = (BitState)value;
+        if (text_archive >> value) mClientDataValidEdge[i] = (AnalyzerEnums::Edge)value;
+        if (text_archive >> value) mClientEnableActiveState[i] = (BitState)value;
+    }
     // bool success = text_archive >> mUsePackets;  //new paramater added -- do this for backwards compatibility
     // if( success == false )
     //	mUsePackets = false; //if the archive fails, set the default value
@@ -218,6 +284,13 @@ const char* SpiAnalyzerSettings::SaveSettings()
     text_archive << mEnableActiveState;
 
     for (U32 i = 0; i < 3; ++i) text_archive << mExtraCS[i];
+    for (U32 i = 1; i < kClientCount; ++i) {
+        text_archive << mClientShiftOrder[i];
+        text_archive << mClientBitsPerTransfer[i];
+        text_archive << mClientClockInactiveState[i];
+        text_archive << mClientDataValidEdge[i];
+        text_archive << mClientEnableActiveState[i];
+    }
     return SetReturnString( text_archive.GetString() );
 }
 
@@ -229,6 +302,13 @@ void SpiAnalyzerSettings::UpdateInterfacesFromSettings()
     mEnableChannelInterface->SetChannel( mEnableChannel );
     for (U32 i = 0; i < 3; ++i)
         mExtraCSInterfaces[i]->SetChannel(mExtraCS[i]);
+    for (U32 i = 0; i < 3; ++i) {
+        mClientShiftOrderInterfaces[i]->SetNumber(mClientShiftOrder[i + 1]);
+        mClientBitsInterfaces[i]->SetNumber(mClientBitsPerTransfer[i + 1]);
+        mClientClockInterfaces[i]->SetNumber(mClientClockInactiveState[i + 1]);
+        mClientPhaseInterfaces[i]->SetNumber(mClientDataValidEdge[i + 1]);
+        mClientPolarityInterfaces[i]->SetNumber(mClientEnableActiveState[i + 1]);
+    }
     mShiftOrderInterface->SetNumber( mShiftOrder );
     mBitsPerTransferInterface->SetNumber( mBitsPerTransfer );
     mClockInactiveStateInterface->SetNumber( mClockInactiveState );
