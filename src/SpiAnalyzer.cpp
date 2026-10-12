@@ -20,7 +20,6 @@ void SpiAnalyzer::SetupResults()
       mResults->AddChannelBubblesWillAppearOn(mSettings->mMosiChannel);
    if (mSettings->mMisoChannel != UNDEFINED_CHANNEL)
       mResults->AddChannelBubblesWillAppearOn(mSettings->mMisoChannel);
-   mResults->AddChannelBubblesWillAppearOn(mSettings->mMuxEnableChannel);
 }
 
 void SpiAnalyzer::Setup()
@@ -98,13 +97,14 @@ void SpiAnalyzer::DecodeTransaction(U64 start, U32 cs)
    mClock->AdvanceToAbsPosition(start);
    if (mClock->GetBitState() != cfg.clockIdle) {
       EmitError(start, start, cs);
+      if (mEnable->DoMoreTransitionsExistInCurrentData())
+         mEnable->AdvanceToNextEdge();
       return;
    }
    FrameV2 begin;
    U8 csByte = U8(cs);
    begin.AddByteArray("cs", &csByte, 1);
    mResults->AddFrameV2(begin, "enable", start, start + 1);
-   mResults->CommitPacketAndStartNewPacket();
    mResults->CommitResults();
 
    const AnalyzerResults::MarkerType marker =
@@ -130,7 +130,11 @@ void SpiAnalyzer::DecodeTransaction(U64 start, U32 cs)
          CheckIfThreadShouldExit();
          // Two clock edges per bit. For CPHA=0 sample the first; for CPHA=1 the second.
          for (U32 half = 0; half < 2; ++half) {
-            if (!mClock->DoMoreTransitionsExistInCurrentData()) return;
+            if (!mClock->DoMoreTransitionsExistInCurrentData()) {
+               // The capture can end during an active transaction.
+               // Keep already decoded words; do not synthesize a disable event.
+               return;
+            }
             U64 next = mClock->GetSampleOfNextEdge();
             if (next >= end || AddressChangedBefore(next)) {
                complete = false;
@@ -180,12 +184,6 @@ void SpiAnalyzer::DecodeTransaction(U64 start, U32 cs)
       mResults->AddFrameV2(result, "result", first, last + 1);
       mResults->CommitResults();
    }
-   Frame selection = {};
-   selection.mStartingSampleInclusive = start;
-   selection.mEndingSampleInclusive = mEnable->GetSampleNumber();
-   selection.mData1 = cs;
-   selection.mFlags = 0x02;
-   mResults->AddFrame(selection);
    FrameV2 finish;
    finish.AddByteArray("cs", &csByte, 1);
    mResults->AddFrameV2(finish, "disable", mEnable->GetSampleNumber(),
