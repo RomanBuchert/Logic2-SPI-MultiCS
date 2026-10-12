@@ -101,7 +101,6 @@ void SpiAnalyzer::DecodeSelection(U64 start, U64 end, U32 cs)
    U64 misoWord = 0;
    U64 firstSample = 0;
    U64 lastSample = 0;
-   U32 halfCycle = 0;
 
    while (mClock->DoMoreTransitionsExistInCurrentData()) {
       CheckIfThreadShouldExit();
@@ -112,7 +111,6 @@ void SpiAnalyzer::DecodeSelection(U64 start, U64 end, U32 cs)
       mClock->AdvanceToNextEdge();
       const bool leading = (mClock->GetBitState() != cfg.clockIdle);
       const bool sampleEdge = cfg.phase == AnalyzerEnums::LeadingEdge ? leading : !leading;
-      ++halfCycle;
       if (!sampleEdge)
          continue;
 
