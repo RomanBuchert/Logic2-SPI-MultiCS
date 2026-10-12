@@ -1,5 +1,5 @@
 cmake_minimum_required (VERSION 3.11)
-project(spi_analyzer)
+project(logic2_spi_multics)
 
 add_definitions( -DLOGIC2 )
 
@@ -24,4 +24,4 @@ src/SpiSimulationDataGenerator.cpp
 src/SpiSimulationDataGenerator.h
 )
 
-add_analyzer_plugin(spi_analyzer SOURCES ${SOURCES})
+add_analyzer_plugin(logic2_spi_multics SOURCES ${SOURCES})
