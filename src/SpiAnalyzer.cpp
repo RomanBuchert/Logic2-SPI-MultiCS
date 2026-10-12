@@ -51,13 +51,13 @@ U32 SpiAnalyzer::ReadAddress(U64 sample)
    return cs;
 }
 
-void SpiAnalyzer::EmitWord(U32 cs, U64 start, U64 end, U64 mosi, U64 miso)
+void SpiAnalyzer::EmitWord(U32 cs, const DecodedWord &word)
 {
    Frame legacy = {};
-   legacy.mStartingSampleInclusive = start;
-   legacy.mEndingSampleInclusive = end;
-   legacy.mData1 = mosi;
-   legacy.mData2 = miso;
+   legacy.mStartingSampleInclusive = word.start;
+   legacy.mEndingSampleInclusive = word.end;
+   legacy.mData1 = word.mosi;
+   legacy.mData2 = word.miso;
    legacy.mFlags = U8(cs << 4);
    mResults->AddFrame(legacy);
 
@@ -67,8 +67,8 @@ void SpiAnalyzer::EmitWord(U32 cs, U64 start, U64 end, U64 mosi, U64 miso)
    U8 misoBytes[8] = {};
    for (U32 i = 0; i < byteCount; ++i) {
       const U32 shift = (byteCount - 1 - i) * 8;
-      mosiBytes[i] = U8(mosi >> shift);
-      misoBytes[i] = U8(miso >> shift);
+      mosiBytes[i] = U8(word.mosi >> shift);
+      misoBytes[i] = U8(word.miso >> shift);
    }
 
    const U8 csByte = U8(cs);
@@ -76,8 +76,7 @@ void SpiAnalyzer::EmitWord(U32 cs, U64 start, U64 end, U64 mosi, U64 miso)
    frame.AddByteArray("mosi", mosiBytes, byteCount);
    frame.AddByteArray("miso", misoBytes, byteCount);
    frame.AddByteArray("cs", &csByte, 1);
-   mResults->AddFrameV2(frame, "result", start, end + 1);
-   mResults->CommitResults();
+   mResults->AddFrameV2(frame, "result", word.start, word.end + 1);
 }
 
 void SpiAnalyzer::DecodeSelection(U64 start, U64 end, U32 cs)
@@ -91,12 +90,12 @@ void SpiAnalyzer::DecodeSelection(U64 start, U64 end, U32 cs)
    FrameV2 enable;
    enable.AddByteArray("cs", &csByte, 1);
    mResults->AddFrameV2(enable, "enable", start, start + 1);
-   mResults->CommitResults();
 
    // A clock transition is either leading or trailing relative to CPOL.
    // CPHA selects which transition samples data. Every sampled bit is appended
    // directly, so a word can end without waiting for another clock edge.
    mClock->AdvanceToAbsPosition(start);
+   std::vector<DecodedWord> words;
    U32 bitCount = 0;
    U64 mosiWord = 0;
    U64 misoWord = 0;
@@ -139,21 +138,25 @@ void SpiAnalyzer::DecodeSelection(U64 start, U64 end, U32 cs)
 
       ++bitCount;
       if (bitCount == wordBits) {
-         EmitWord(cs, firstSample, lastSample, mosiWord, misoWord);
+         DecodedWord word = {firstSample, lastSample, mosiWord, misoWord};
+         words.push_back(word);
          bitCount = 0;
          mosiWord = 0;
          misoWord = 0;
       }
    }
 
-   // Legacy frame for a single transaction-wide bubble on the enable channel.
-   // The existing FrameV2 data table remains unchanged.
+   // Publish the complete transaction as one batch. Insert the selection
+   // before its data words to keep legacy frames ordered by start time.
+   // FrameV2 events retain their original timestamps and schema.
    Frame selection = {};
    selection.mStartingSampleInclusive = start;
    selection.mEndingSampleInclusive = end;
    selection.mData1 = cs;
    selection.mFlags = 0x02;
    mResults->AddFrame(selection);
+   for (size_t i = 0; i < words.size(); ++i)
+      EmitWord(cs, words[i]);
 
    FrameV2 disable;
    disable.AddByteArray("cs", &csByte, 1);
