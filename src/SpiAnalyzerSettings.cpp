@@ -12,20 +12,24 @@ SpiAnalyzerSettings::SpiAnalyzerSettings()
    mMosiInterface->SetTitleAndTooltip("MOSI", "Master Out, Slave In");
    mMosiInterface->SetSelectionOfNoneIsAllowed(true);
    mMosiInterface->SetChannel(mMosiChannel);
+   AddInterface(mMosiInterface.get());
 
    mMisoInterface.reset(new AnalyzerSettingInterfaceChannel());
    mMisoInterface->SetTitleAndTooltip("MISO", "Master In, Slave Out");
    mMisoInterface->SetSelectionOfNoneIsAllowed(true);
    mMisoInterface->SetChannel(mMisoChannel);
+   AddInterface(mMisoInterface.get());
 
    mClockInterface.reset(new AnalyzerSettingInterfaceChannel());
    mClockInterface->SetTitleAndTooltip("SCK", "Shared SPI clock");
    mClockInterface->SetChannel(mClockChannel);
+   AddInterface(mClockInterface.get());
 
    mMuxEnableInterface.reset(new AnalyzerSettingInterfaceChannel());
-   mMuxEnableInterface->SetTitleAndTooltip("MUX_EN", "Optional active-low MUX enable (channel order diagnostic)");
+   mMuxEnableInterface->SetTitleAndTooltip("MUX_EN", "Optional active-low MUX enable");
    mMuxEnableInterface->SetSelectionOfNoneIsAllowed(true);
    mMuxEnableInterface->SetChannel(mMuxEnableChannel);
+   AddInterface(mMuxEnableInterface.get());
 
    for (U32 i = 0; i < 4; ++i) {
       mMuxAddressChannels[i] = UNDEFINED_CHANNEL;
@@ -35,16 +39,9 @@ SpiAnalyzerSettings::SpiAnalyzerSettings()
       mMuxAddressInterfaces[i]->SetTitleAndTooltip(label.str().c_str(), "Optional consecutive MUX address bit");
       mMuxAddressInterfaces[i]->SetSelectionOfNoneIsAllowed(true);
       mMuxAddressInterfaces[i]->SetChannel(mMuxAddressChannels[i]);
+      AddInterface(mMuxAddressInterfaces[i].get());
    }
 
-   // Diagnostic: register MUX inputs before MOSI/MISO to test whether Logic 2
-   // incorrectly limits optional channel selection by interface position.
-   AddInterface(mMuxEnableInterface.get());
-   for (U32 i = 0; i < 4; ++i)
-      AddInterface(mMuxAddressInterfaces[i].get());
-   AddInterface(mMosiInterface.get());
-   AddInterface(mMisoInterface.get());
-   AddInterface(mClockInterface.get());
 
    mDefaults.shiftOrder = AnalyzerEnums::MsbFirst;
    mDefaults.bitsPerTransfer = 8;
@@ -168,7 +165,9 @@ std::string SpiAnalyzerSettings::GetClientLabel(U32 cs) const
 void SpiAnalyzerSettings::RegisterChannels()
 {
    ClearChannels();
-   // Diagnostic: match the channel-reporting order to the interface order.
+   AddChannel(mMosiChannel, "MOSI", mMosiChannel != UNDEFINED_CHANNEL);
+   AddChannel(mMisoChannel, "MISO", mMisoChannel != UNDEFINED_CHANNEL);
+   AddChannel(mClockChannel, "SCK", mClockChannel != UNDEFINED_CHANNEL);
    AddChannel(mMuxEnableChannel, "MUX_EN", mMuxEnableChannel != UNDEFINED_CHANNEL);
    for (U32 i = 0; i < 4; ++i) {
       std::stringstream label;
@@ -176,9 +175,6 @@ void SpiAnalyzerSettings::RegisterChannels()
       AddChannel(mMuxAddressChannels[i], label.str().c_str(),
                  mMuxAddressChannels[i] != UNDEFINED_CHANNEL);
    }
-   AddChannel(mMosiChannel, "MOSI", mMosiChannel != UNDEFINED_CHANNEL);
-   AddChannel(mMisoChannel, "MISO", mMisoChannel != UNDEFINED_CHANNEL);
-   AddChannel(mClockChannel, "SCK", mClockChannel != UNDEFINED_CHANNEL);
 }
 
 bool SpiAnalyzerSettings::SetSettingsFromInterfaces()
