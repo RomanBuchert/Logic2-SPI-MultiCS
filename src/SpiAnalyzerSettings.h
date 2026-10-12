@@ -4,6 +4,7 @@
 #include <AnalyzerSettings.h>
 #include <AnalyzerTypes.h>
 #include <memory>
+#include <string>
 
 struct SpiClientSettings
 {
@@ -30,6 +31,9 @@ class SpiAnalyzerSettings : public AnalyzerSettings
    Channel mMuxEnableChannel;
    Channel mMuxAddressChannels[4];
    SpiClientSettings mClients[kClientCount];
+   SpiClientSettings mDefaults;
+   std::string mClientNames[kClientCount];
+   std::string GetClientLabel(U32 cs) const;
 
  private:
    std::auto_ptr<AnalyzerSettingInterfaceChannel> mMosiInterface;
@@ -37,6 +41,13 @@ class SpiAnalyzerSettings : public AnalyzerSettings
    std::auto_ptr<AnalyzerSettingInterfaceChannel> mClockInterface;
    std::auto_ptr<AnalyzerSettingInterfaceChannel> mMuxEnableInterface;
    std::auto_ptr<AnalyzerSettingInterfaceChannel> mMuxAddressInterfaces[4];
+   std::auto_ptr<AnalyzerSettingInterfaceNumberList> mDefaultShiftInterface;
+   std::auto_ptr<AnalyzerSettingInterfaceNumberList> mDefaultBitsInterface;
+   std::auto_ptr<AnalyzerSettingInterfaceNumberList> mDefaultIdleInterface;
+   std::auto_ptr<AnalyzerSettingInterfaceNumberList> mDefaultPhaseInterface;
+   std::auto_ptr<AnalyzerSettingInterfaceText> mNameInterfaces[kClientCount];
+   SpiClientSettings mOverrides[kClientCount];
+   void ResolveClients();
    std::auto_ptr<AnalyzerSettingInterfaceNumberList> mShiftInterfaces[kClientCount];
    std::auto_ptr<AnalyzerSettingInterfaceNumberList> mBitsInterfaces[kClientCount];
    std::auto_ptr<AnalyzerSettingInterfaceNumberList> mClockIdleInterfaces[kClientCount];
