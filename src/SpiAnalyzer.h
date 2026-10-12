@@ -3,6 +3,7 @@
 
 #include <Analyzer.h>
 #include <memory>
+#include <vector>
 #include "SpiAnalyzerResults.h"
 #include "SpiSimulationDataGenerator.h"
 
@@ -25,7 +26,14 @@ class SpiAnalyzer : public Analyzer2
    void SetupChannels();
    U32 ReadAddress(U64 sample);
    void DecodeSelection(U64 start, U64 end, U32 cs);
-   void EmitWord(U32 cs, U64 start, U64 end, U64 mosi, U64 miso);
+   struct DecodedWord {
+      U64 start;
+      U64 end;
+      U64 mosi;
+      U64 miso;
+   };
+
+   void EmitWord(U32 cs, const DecodedWord &word);
 
    std::auto_ptr<SpiAnalyzerSettings> mSettings;
    std::auto_ptr<SpiAnalyzerResults> mResults;
