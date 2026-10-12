@@ -20,7 +20,6 @@ void SpiAnalyzer::SetupResults()
       mResults->AddChannelBubblesWillAppearOn(mSettings->mMosiChannel);
    if (mSettings->mMisoChannel != UNDEFINED_CHANNEL)
       mResults->AddChannelBubblesWillAppearOn(mSettings->mMisoChannel);
-   mResults->AddChannelBubblesWillAppearOn(mSettings->mMuxEnableChannel);
 }
 
 void SpiAnalyzer::Setup()
@@ -68,8 +67,7 @@ void SpiAnalyzer::EmitError(U64 start, U64 end, U32 cs)
    frame.mData1 = cs;
    mResults->AddFrame(frame);
    FrameV2 event;
-   U8 csByte = U8(cs);
-   event.AddByteArray("cs", &csByte, 1);
+   event.AddInteger("cs", cs);
    mResults->AddFrameV2(event, "error", start, end + 1);
    mResults->AddMarker(start, AnalyzerResults::ErrorSquare, mSettings->mClockChannel);
    mResults->CommitResults();
@@ -101,8 +99,7 @@ void SpiAnalyzer::DecodeTransaction(U64 start, U32 cs)
       return;
    }
    FrameV2 begin;
-   U8 csByte = U8(cs);
-   begin.AddByteArray("cs", &csByte, 1);
+   begin.AddInteger("cs", cs);
    mResults->AddFrameV2(begin, "enable", start, start + 1);
    mResults->CommitPacketAndStartNewPacket();
    mResults->CommitResults();
@@ -180,19 +177,12 @@ void SpiAnalyzer::DecodeTransaction(U64 start, U32 cs)
       FrameV2 result;
       result.AddByteArray("mosi", mosiBytes, bytes);
       result.AddByteArray("miso", misoBytes, bytes);
-      result.AddByteArray("cs", &csByte, 1);
+      result.AddInteger("cs", cs);
       mResults->AddFrameV2(result, "result", first, last + 1);
       mResults->CommitResults();
    }
-   // One legacy frame spanning the entire active-low interval supplies the MUX_EN bubble.
-   Frame selectFrame = {};
-   selectFrame.mStartingSampleInclusive = start;
-   selectFrame.mEndingSampleInclusive = mEnable->GetSampleNumber();
-   selectFrame.mData1 = cs;
-   selectFrame.mFlags = 0x10000;
-   mResults->AddFrame(selectFrame);
    FrameV2 finish;
-   finish.AddByteArray("cs", &csByte, 1);
+   finish.AddInteger("cs", cs);
    mResults->AddFrameV2(finish, "disable", mEnable->GetSampleNumber(),
                         mEnable->GetSampleNumber() + 1);
    mResults->CommitResults();
