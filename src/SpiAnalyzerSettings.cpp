@@ -23,7 +23,7 @@ SpiAnalyzerSettings::SpiAnalyzerSettings()
    mClockInterface->SetChannel(mClockChannel);
 
    mMuxEnableInterface.reset(new AnalyzerSettingInterfaceChannel());
-   mMuxEnableInterface->SetTitleAndTooltip("MUX_EN", "Optional active-low MUX enable");
+   mMuxEnableInterface->SetTitleAndTooltip("MUX_EN", "Optional active-low MUX enable (channel order diagnostic)");
    mMuxEnableInterface->SetSelectionOfNoneIsAllowed(true);
    mMuxEnableInterface->SetChannel(mMuxEnableChannel);
 
@@ -168,9 +168,7 @@ std::string SpiAnalyzerSettings::GetClientLabel(U32 cs) const
 void SpiAnalyzerSettings::RegisterChannels()
 {
    ClearChannels();
-   AddChannel(mMosiChannel, "MOSI", mMosiChannel != UNDEFINED_CHANNEL);
-   AddChannel(mMisoChannel, "MISO", mMisoChannel != UNDEFINED_CHANNEL);
-   AddChannel(mClockChannel, "SCK", mClockChannel != UNDEFINED_CHANNEL);
+   // Diagnostic: match the channel-reporting order to the interface order.
    AddChannel(mMuxEnableChannel, "MUX_EN", mMuxEnableChannel != UNDEFINED_CHANNEL);
    for (U32 i = 0; i < 4; ++i) {
       std::stringstream label;
@@ -178,6 +176,9 @@ void SpiAnalyzerSettings::RegisterChannels()
       AddChannel(mMuxAddressChannels[i], label.str().c_str(),
                  mMuxAddressChannels[i] != UNDEFINED_CHANNEL);
    }
+   AddChannel(mMosiChannel, "MOSI", mMosiChannel != UNDEFINED_CHANNEL);
+   AddChannel(mMisoChannel, "MISO", mMisoChannel != UNDEFINED_CHANNEL);
+   AddChannel(mClockChannel, "SCK", mClockChannel != UNDEFINED_CHANNEL);
 }
 
 bool SpiAnalyzerSettings::SetSettingsFromInterfaces()
