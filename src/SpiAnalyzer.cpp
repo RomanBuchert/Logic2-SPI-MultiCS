@@ -196,8 +196,8 @@ U32 SpiAnalyzer::GenerateSimulationData(U64 sample, U32 rate,
 }
 
 U32 SpiAnalyzer::GetMinimumSampleRateHz() { return 10000; }
-const char *SpiAnalyzer::GetAnalyzerName() const { return "SPI MUX (RB)"; }
+const char *SpiAnalyzer::GetAnalyzerName() const { return "SPI MUX"; }
 bool SpiAnalyzer::NeedsRerun() { return false; }
-const char *GetAnalyzerName() { return "SPI MUX (RB)"; }
+const char *GetAnalyzerName() { return "SPI MUX"; }
 Analyzer *CreateAnalyzer() { return new SpiAnalyzer(); }
 void DestroyAnalyzer(Analyzer *analyzer) { delete analyzer; }
