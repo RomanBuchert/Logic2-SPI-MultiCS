@@ -32,5 +32,6 @@ class SpiSimulationDataGenerator
     SimulationChannelDescriptor* mMosi;
     SimulationChannelDescriptor* mClock;
     SimulationChannelDescriptor* mEnable;
+    SimulationChannelDescriptor* mMuxAddress[4];
 };
 #endif // SPI_SIMULATION_DATA_GENERATOR
