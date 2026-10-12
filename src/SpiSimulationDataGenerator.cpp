@@ -26,13 +26,16 @@ void SpiSimulationDataGenerator::Initialize( U32 simulation_sample_rate, SpiAnal
     else
         mMosi = NULL;
 
-    mClock = mSpiSimulationChannels.Add( settings->mClockChannel, mSimulationSampleRateHz, mSettings->mClockInactiveState );
+    mClock = mSpiSimulationChannels.Add( settings->mClockChannel, mSimulationSampleRateHz, mSettings->mClients[0].clockIdle );
 
-    if( settings->mEnableChannel != UNDEFINED_CHANNEL )
-        mEnable = mSpiSimulationChannels.Add( settings->mEnableChannel, mSimulationSampleRateHz, Invert( mSettings->mEnableActiveState ) );
+    if( settings->mMuxEnableChannel != UNDEFINED_CHANNEL )
+        mEnable = mSpiSimulationChannels.Add( settings->mMuxEnableChannel, mSimulationSampleRateHz, Invert( BIT_LOW ) );
     else
         mEnable = NULL;
 
+    for (U32 i = 0; i < 4; ++i)
+        mMuxAddress[i] = mSpiSimulationChannels.Add(settings->mMuxAddressChannels[i],
+                                                      mSimulationSampleRateHz, BIT_LOW);
     mSpiSimulationChannels.AdvanceAll( mClockGenerator.AdvanceByHalfPeriod( 10.0 ) ); // insert 10 bit-periods of idle
 
     mValue = 0;
@@ -62,7 +65,7 @@ void SpiSimulationDataGenerator::CreateSpiTransaction()
 
     mSpiSimulationChannels.AdvanceAll( mClockGenerator.AdvanceByHalfPeriod( 2.0 ) );
 
-    if( mSettings->mDataValidEdge == AnalyzerEnums::LeadingEdge )
+    if( mSettings->mClients[0].phase == AnalyzerEnums::LeadingEdge )
     {
         OutputWord_CPHA0( mValue, mValue + 1 );
         mValue++;
@@ -100,10 +103,10 @@ void SpiSimulationDataGenerator::CreateSpiTransaction()
 
 void SpiSimulationDataGenerator::OutputWord_CPHA0( U64 mosi_data, U64 miso_data )
 {
-    BitExtractor mosi_bits( mosi_data, mSettings->mShiftOrder, mSettings->mBitsPerTransfer );
-    BitExtractor miso_bits( miso_data, mSettings->mShiftOrder, mSettings->mBitsPerTransfer );
+    BitExtractor mosi_bits( mosi_data, mSettings->mClients[0].shiftOrder, mSettings->mClients[0].bitsPerTransfer );
+    BitExtractor miso_bits( miso_data, mSettings->mClients[0].shiftOrder, mSettings->mClients[0].bitsPerTransfer );
 
-    U32 count = mSettings->mBitsPerTransfer;
+    U32 count = mSettings->mClients[0].bitsPerTransfer;
     for( U32 i = 0; i < count; i++ )
     {
         if( mMosi != NULL )
@@ -130,10 +133,10 @@ void SpiSimulationDataGenerator::OutputWord_CPHA0( U64 mosi_data, U64 miso_data 
 
 void SpiSimulationDataGenerator::OutputWord_CPHA1( U64 mosi_data, U64 miso_data )
 {
-    BitExtractor mosi_bits( mosi_data, mSettings->mShiftOrder, mSettings->mBitsPerTransfer );
-    BitExtractor miso_bits( miso_data, mSettings->mShiftOrder, mSettings->mBitsPerTransfer );
+    BitExtractor mosi_bits( mosi_data, mSettings->mClients[0].shiftOrder, mSettings->mClients[0].bitsPerTransfer );
+    BitExtractor miso_bits( miso_data, mSettings->mClients[0].shiftOrder, mSettings->mClients[0].bitsPerTransfer );
 
-    U32 count = mSettings->mBitsPerTransfer;
+    U32 count = mSettings->mClients[0].bitsPerTransfer;
     for( U32 i = 0; i < count; i++ )
     {
         mClock->Transition(); // data invalid
