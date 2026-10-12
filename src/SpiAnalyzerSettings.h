@@ -3,53 +3,44 @@
 
 #include <AnalyzerSettings.h>
 #include <AnalyzerTypes.h>
+#include <memory>
+
+struct SpiClientSettings
+{
+   AnalyzerEnums::ShiftOrder shiftOrder;
+   U32 bitsPerTransfer;
+   BitState clockIdle;
+   AnalyzerEnums::Edge phase;
+};
 
 class SpiAnalyzerSettings : public AnalyzerSettings
 {
-  public:
-    SpiAnalyzerSettings();
-    virtual ~SpiAnalyzerSettings();
+ public:
+   static const U32 kClientCount = 16;
+   SpiAnalyzerSettings();
+   virtual ~SpiAnalyzerSettings();
+   virtual bool SetSettingsFromInterfaces();
+   virtual void LoadSettings(const char *settings);
+   virtual const char *SaveSettings();
+   void UpdateInterfacesFromSettings();
 
-    virtual bool SetSettingsFromInterfaces();
-    virtual void LoadSettings( const char* settings );
-    virtual const char* SaveSettings();
+   Channel mMosiChannel;
+   Channel mMisoChannel;
+   Channel mClockChannel;
+   Channel mMuxEnableChannel;
+   Channel mMuxAddressChannels[4];
+   SpiClientSettings mClients[kClientCount];
 
-    void UpdateInterfacesFromSettings();
-
-    Channel mMosiChannel;
-    Channel mMisoChannel;
-    Channel mClockChannel;
-    Channel mEnableChannel;
-    static const U32 kClientCount = 4;
-    Channel mExtraCS[3];
-    AnalyzerEnums::ShiftOrder mClientShiftOrder[kClientCount];
-    U32 mClientBitsPerTransfer[kClientCount];
-    BitState mClientClockInactiveState[kClientCount];
-    AnalyzerEnums::Edge mClientDataValidEdge[kClientCount];
-    BitState mClientEnableActiveState[kClientCount];
-    AnalyzerEnums::ShiftOrder mShiftOrder;
-    U32 mBitsPerTransfer;
-    BitState mClockInactiveState;
-    AnalyzerEnums::Edge mDataValidEdge;
-    BitState mEnableActiveState;
-
-
-  protected:
-    std::auto_ptr<AnalyzerSettingInterfaceChannel> mMosiChannelInterface;
-    std::auto_ptr<AnalyzerSettingInterfaceChannel> mMisoChannelInterface;
-    std::auto_ptr<AnalyzerSettingInterfaceChannel> mClockChannelInterface;
-    std::auto_ptr<AnalyzerSettingInterfaceChannel> mEnableChannelInterface;
-    std::auto_ptr<AnalyzerSettingInterfaceChannel> mExtraCSInterfaces[3];
-    std::auto_ptr<AnalyzerSettingInterfaceNumberList> mClientShiftOrderInterfaces[3];
-    std::auto_ptr<AnalyzerSettingInterfaceNumberList> mClientBitsInterfaces[3];
-    std::auto_ptr<AnalyzerSettingInterfaceNumberList> mClientClockInterfaces[3];
-    std::auto_ptr<AnalyzerSettingInterfaceNumberList> mClientPhaseInterfaces[3];
-    std::auto_ptr<AnalyzerSettingInterfaceNumberList> mClientPolarityInterfaces[3];
-    std::auto_ptr<AnalyzerSettingInterfaceNumberList> mShiftOrderInterface;
-    std::auto_ptr<AnalyzerSettingInterfaceNumberList> mBitsPerTransferInterface;
-    std::auto_ptr<AnalyzerSettingInterfaceNumberList> mClockInactiveStateInterface;
-    std::auto_ptr<AnalyzerSettingInterfaceNumberList> mDataValidEdgeInterface;
-    std::auto_ptr<AnalyzerSettingInterfaceNumberList> mEnableActiveStateInterface;
+ private:
+   std::auto_ptr<AnalyzerSettingInterfaceChannel> mMosiInterface;
+   std::auto_ptr<AnalyzerSettingInterfaceChannel> mMisoInterface;
+   std::auto_ptr<AnalyzerSettingInterfaceChannel> mClockInterface;
+   std::auto_ptr<AnalyzerSettingInterfaceChannel> mMuxEnableInterface;
+   std::auto_ptr<AnalyzerSettingInterfaceChannel> mMuxAddressInterfaces[4];
+   std::auto_ptr<AnalyzerSettingInterfaceNumberList> mShiftInterfaces[kClientCount];
+   std::auto_ptr<AnalyzerSettingInterfaceNumberList> mBitsInterfaces[kClientCount];
+   std::auto_ptr<AnalyzerSettingInterfaceNumberList> mClockIdleInterfaces[kClientCount];
+   std::auto_ptr<AnalyzerSettingInterfaceNumberList> mPhaseInterfaces[kClientCount];
+   void RegisterChannels();
 };
-
-#endif // SPI_ANALYZER_SETTINGS
+#endif
