@@ -32,8 +32,18 @@ SpiAnalyzerSettings::SpiAnalyzerSettings()
     mEnableChannelInterface.reset( new AnalyzerSettingInterfaceChannel() );
     mEnableChannelInterface->SetTitleAndTooltip( "Enable", "Enable (SS, Slave Select)" );
     mEnableChannelInterface->SetChannel( mEnableChannel );
+    for (U32 i = 0; i < 3; ++i) mExtraCSInterfaces[i]->SetChannel(mExtraCS[i]);
     mEnableChannelInterface->SetSelectionOfNoneIsAllowed( true );
 
+    for (U32 i = 0; i < 3; ++i) {
+        mExtraCS[i] = UNDEFINED_CHANNEL;
+        mExtraCSInterfaces[i].reset(new AnalyzerSettingInterfaceChannel());
+        std::stringstream title;
+        title << "CS" << (i + 1);
+        mExtraCSInterfaces[i]->SetTitleAndTooltip(title.str().c_str(), "Additional chip select");
+        mExtraCSInterfaces[i]->SetChannel(UNDEFINED_CHANNEL);
+        mExtraCSInterfaces[i]->SetSelectionOfNoneIsAllowed(true);
+    }
     mShiftOrderInterface.reset( new AnalyzerSettingInterfaceNumberList() );
     mShiftOrderInterface->SetTitleAndTooltip( "Significant Bit", "" );
     mShiftOrderInterface->AddNumber( AnalyzerEnums::MsbFirst, "Most Significant Bit First (Standard)",
@@ -81,6 +91,7 @@ SpiAnalyzerSettings::SpiAnalyzerSettings()
     AddInterface( mMisoChannelInterface.get() );
     AddInterface( mClockChannelInterface.get() );
     AddInterface( mEnableChannelInterface.get() );
+    for (U32 i = 0; i < 3; ++i) AddInterface(mExtraCSInterfaces[i].get());
     AddInterface( mShiftOrderInterface.get() );
     AddInterface( mBitsPerTransferInterface.get() );
     AddInterface( mClockInactiveStateInterface.get() );
@@ -116,6 +127,7 @@ bool SpiAnalyzerSettings::SetSettingsFromInterfaces()
     channels.push_back( miso );
     channels.push_back( clock );
     channels.push_back( enable );
+    for (U32 i = 0; i < 3; ++i) channels.push_back(mExtraCSInterfaces[i]->GetChannel());
 
     if( AnalyzerHelpers::DoChannelsOverlap( &channels[ 0 ], channels.size() ) == true )
     {
@@ -134,6 +146,7 @@ bool SpiAnalyzerSettings::SetSettingsFromInterfaces()
     mClockChannel = mClockChannelInterface->GetChannel();
     mEnableChannel = mEnableChannelInterface->GetChannel();
 
+    for (U32 i = 0; i < 3; ++i) mExtraCS[i] = mExtraCSInterfaces[i]->GetChannel();
     mShiftOrder = ( AnalyzerEnums::ShiftOrder )U32( mShiftOrderInterface->GetNumber() );
     mBitsPerTransfer = U32( mBitsPerTransferInterface->GetNumber() );
     mClockInactiveState = ( BitState )U32( mClockInactiveStateInterface->GetNumber() );
@@ -145,6 +158,7 @@ bool SpiAnalyzerSettings::SetSettingsFromInterfaces()
     AddChannel( mMisoChannel, "MISO", mMisoChannel != UNDEFINED_CHANNEL );
     AddChannel( mClockChannel, "CLOCK", mClockChannel != UNDEFINED_CHANNEL );
     AddChannel( mEnableChannel, "ENABLE", mEnableChannel != UNDEFINED_CHANNEL );
+    for (U32 i = 0; i < 3; ++i) AddChannel(mExtraCS[i], "CS", mExtraCS[i] != UNDEFINED_CHANNEL);
 
     return true;
 }
@@ -169,6 +183,11 @@ void SpiAnalyzerSettings::LoadSettings( const char* settings )
     text_archive >> *( U32* )&mDataValidEdge;
     text_archive >> *( U32* )&mEnableActiveState;
 
+    for (U32 i = 0; i < 3; ++i) {
+        mExtraCS[i] = UNDEFINED_CHANNEL;
+        Channel channel;
+        if (text_archive >> channel) mExtraCS[i] = channel;
+    }
     // bool success = text_archive >> mUsePackets;  //new paramater added -- do this for backwards compatibility
     // if( success == false )
     //	mUsePackets = false; //if the archive fails, set the default value
@@ -178,6 +197,7 @@ void SpiAnalyzerSettings::LoadSettings( const char* settings )
     AddChannel( mMisoChannel, "MISO", mMisoChannel != UNDEFINED_CHANNEL );
     AddChannel( mClockChannel, "CLOCK", mClockChannel != UNDEFINED_CHANNEL );
     AddChannel( mEnableChannel, "ENABLE", mEnableChannel != UNDEFINED_CHANNEL );
+    for (U32 i = 0; i < 3; ++i) AddChannel(mExtraCS[i], "CS", mExtraCS[i] != UNDEFINED_CHANNEL);
 
     UpdateInterfacesFromSettings();
 }
@@ -197,6 +217,7 @@ const char* SpiAnalyzerSettings::SaveSettings()
     text_archive << mDataValidEdge;
     text_archive << mEnableActiveState;
 
+    for (U32 i = 0; i < 3; ++i) text_archive << mExtraCS[i];
     return SetReturnString( text_archive.GetString() );
 }
 
