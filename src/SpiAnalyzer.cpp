@@ -10,19 +10,23 @@ SpiAnalyzer::SpiAnalyzer()
    UseFrameV2();
 }
 
-SpiAnalyzer::~SpiAnalyzer() { KillThread(); }
+SpiAnalyzer::~SpiAnalyzer()
+{
+   KillThread();
+}
 
 void SpiAnalyzer::SetupResults()
 {
    mResults.reset(new SpiAnalyzerResults(this, mSettings.get()));
    SetAnalyzerResults(mResults.get());
+
    if (mSettings->mMosiChannel != UNDEFINED_CHANNEL)
       mResults->AddChannelBubblesWillAppearOn(mSettings->mMosiChannel);
    if (mSettings->mMisoChannel != UNDEFINED_CHANNEL)
       mResults->AddChannelBubblesWillAppearOn(mSettings->mMisoChannel);
 }
 
-void SpiAnalyzer::Setup()
+void SpiAnalyzer::SetupChannels()
 {
    mClock = GetAnalyzerChannelData(mSettings->mClockChannel);
    mEnable = GetAnalyzerChannelData(mSettings->mMuxEnableChannel);
@@ -30,175 +34,148 @@ void SpiAnalyzer::Setup()
               ? NULL : GetAnalyzerChannelData(mSettings->mMosiChannel);
    mMiso = mSettings->mMisoChannel == UNDEFINED_CHANNEL
               ? NULL : GetAnalyzerChannelData(mSettings->mMisoChannel);
+
    for (U32 i = 0; i < 4; ++i)
       mAddress[i] = GetAnalyzerChannelData(mSettings->mMuxAddressChannels[i]);
 }
 
-U32 SpiAnalyzer::ReadMuxAddress(U64 sample)
+U32 SpiAnalyzer::ReadAddress(U64 sample)
 {
-   U32 address = 0;
+   U32 cs = 0;
    for (U32 i = 0; i < 4; ++i) {
       mAddress[i]->AdvanceToAbsPosition(sample);
-      if (mAddress[i]->GetBitState() == BIT_HIGH) address |= (1U << i);
+      if (mAddress[i]->GetBitState() == BIT_HIGH)
+         cs |= 1U << i;
    }
-   return address;
+   return cs;
 }
 
-bool SpiAnalyzer::EdgeBefore(U64 sample, AnalyzerChannelData *channel)
+void SpiAnalyzer::EmitWord(U32 cs, U64 start, U64 end, U64 mosi, U64 miso)
 {
-   return channel->DoMoreTransitionsExistInCurrentData() &&
-          channel->GetSampleOfNextEdge() <= sample;
-}
+   Frame legacy = {};
+   legacy.mStartingSampleInclusive = start;
+   legacy.mEndingSampleInclusive = end;
+   legacy.mData1 = mosi;
+   legacy.mData2 = miso;
+   legacy.mFlags = U8(cs << 4);
+   mResults->AddFrame(legacy);
 
-bool SpiAnalyzer::AddressChangedBefore(U64 sample)
-{
-   for (U32 i = 0; i < 4; ++i)
-      if (EdgeBefore(sample, mAddress[i])) return true;
-   return false;
-}
+   const U32 bits = mSettings->mClients[cs].bitsPerTransfer;
+   const U32 byteCount = (bits + 7) / 8;
+   U8 mosiBytes[8] = {};
+   U8 misoBytes[8] = {};
+   for (U32 i = 0; i < byteCount; ++i) {
+      const U32 shift = (byteCount - 1 - i) * 8;
+      mosiBytes[i] = U8(mosi >> shift);
+      misoBytes[i] = U8(miso >> shift);
+   }
 
-void SpiAnalyzer::EmitError(U64 start, U64 end, U32 cs)
-{
-   if (end < start) end = start;
-   Frame frame = {};
-   frame.mStartingSampleInclusive = start;
-   frame.mEndingSampleInclusive = end;
-   frame.mFlags = SPI_ERROR_FLAG | DISPLAY_AS_ERROR_FLAG;
-   frame.mData1 = cs;
-   mResults->AddFrame(frame);
-   FrameV2 event;
-   U8 csByte = U8(cs);
-   event.AddByteArray("cs", &csByte, 1);
-   mResults->AddFrameV2(event, "error", start, end + 1);
-   mResults->AddMarker(start, AnalyzerResults::ErrorSquare, mSettings->mClockChannel);
+   const U8 csByte = U8(cs);
+   FrameV2 frame;
+   frame.AddByteArray("mosi", mosiBytes, byteCount);
+   frame.AddByteArray("miso", misoBytes, byteCount);
+   frame.AddByteArray("cs", &csByte, 1);
+   mResults->AddFrameV2(frame, "result", start, end + 1);
    mResults->CommitResults();
 }
 
-bool SpiAnalyzer::NextEnableStart(U64 *sample)
-{
-   // Start only on an inactive-to-active transition, never on an arbitrary clock edge.
-   for (;;) {
-      CheckIfThreadShouldExit();
-      if (!mEnable->DoMoreTransitionsExistInCurrentData()) return false;
-      mEnable->AdvanceToNextEdge();
-      if (mEnable->GetBitState() == BIT_LOW) {
-         *sample = mEnable->GetSampleNumber();
-         return true;
-      }
-   }
-}
-
-void SpiAnalyzer::DecodeTransaction(U64 start, U32 cs)
+void SpiAnalyzer::DecodeSelection(U64 start, U64 end, U32 cs)
 {
    const SpiClientSettings &cfg = mSettings->mClients[cs];
-   const U32 bits = cfg.bitsPerTransfer;
-   if (bits < 1 || bits > 64) return;
-   const U32 bytes = (bits + 7) / 8;
-   mClock->AdvanceToAbsPosition(start);
-   if (mClock->GetBitState() != cfg.clockIdle) {
-      EmitError(start, start, cs);
-      if (mEnable->DoMoreTransitionsExistInCurrentData())
-         mEnable->AdvanceToNextEdge();
+   const U32 wordBits = cfg.bitsPerTransfer;
+   if (wordBits == 0 || wordBits > 64)
       return;
-   }
-   FrameV2 begin;
-   U8 csByte = U8(cs);
-   begin.AddByteArray("cs", &csByte, 1);
-   mResults->AddFrameV2(begin, "enable", start, start + 1);
+
+   const U8 csByte = U8(cs);
+   FrameV2 enable;
+   enable.AddByteArray("cs", &csByte, 1);
+   mResults->AddFrameV2(enable, "enable", start, start + 1);
    mResults->CommitResults();
 
-   const AnalyzerResults::MarkerType marker =
-      (cfg.clockIdle == BIT_LOW) ==
-      (cfg.phase == AnalyzerEnums::LeadingEdge)
-         ? AnalyzerResults::UpArrow : AnalyzerResults::DownArrow;
+   // A clock transition is either leading or trailing relative to CPOL.
+   // CPHA selects which transition samples data. Every sampled bit is appended
+   // directly, so a word can end without waiting for another clock edge.
+   mClock->AdvanceToAbsPosition(start);
+   U32 bitCount = 0;
+   U64 mosiWord = 0;
+   U64 misoWord = 0;
+   U64 firstSample = 0;
+   U64 lastSample = 0;
+   U32 halfCycle = 0;
 
-   for (;;) {
+   while (mClock->DoMoreTransitionsExistInCurrentData()) {
       CheckIfThreadShouldExit();
-      if (!mEnable->DoMoreTransitionsExistInCurrentData()) return;
-      U64 end = mEnable->GetSampleOfNextEdge();
-      // Address changes are checked against the next clock edge below.
-      U64 mosiWord = 0;
-      U64 misoWord = 0;
-      DataBuilder mosiBuilder;
-      DataBuilder misoBuilder;
-      mosiBuilder.Reset(&mosiWord, cfg.shiftOrder, bits);
-      misoBuilder.Reset(&misoWord, cfg.shiftOrder, bits);
-      U64 first = 0;
-      U64 last = 0;
-      bool complete = true;
-      for (U32 bit = 0; bit < bits; ++bit) {
-         CheckIfThreadShouldExit();
-         // Two clock edges per bit. For CPHA=0 sample the first; for CPHA=1 the second.
-         for (U32 half = 0; half < 2; ++half) {
-            if (!mClock->DoMoreTransitionsExistInCurrentData()) {
-               // The capture can end during an active transaction.
-               // Keep already decoded words; do not synthesize a disable event.
-               return;
-            }
-            U64 next = mClock->GetSampleOfNextEdge();
-            if (next >= end || AddressChangedBefore(next)) {
-               complete = false;
-               break;
-            }
-            mClock->AdvanceToNextEdge();
-            if (half == U32(cfg.phase == AnalyzerEnums::TrailingEdge)) {
-               U64 sample = mClock->GetSampleNumber();
-               if (bit == 0) first = sample;
-               last = sample;
-               if (mMosi != NULL) {
-                  mMosi->AdvanceToAbsPosition(sample);
-                  mosiBuilder.AddBit(mMosi->GetBitState());
-               }
-               if (mMiso != NULL) {
-                  mMiso->AdvanceToAbsPosition(sample);
-                  misoBuilder.AddBit(mMiso->GetBitState());
-               }
-               mResults->AddMarker(sample, marker, mSettings->mClockChannel);
-            }
-         }
-         if (!complete) break;
-      }
-      if (!complete) {
-         if (AddressChangedBefore(end)) EmitError(start, end, cs);
-         mEnable->AdvanceToAbsPosition(end);
+      const U64 nextClock = mClock->GetSampleOfNextEdge();
+      if (nextClock >= end)
          break;
+
+      mClock->AdvanceToNextEdge();
+      const bool leading = (mClock->GetBitState() != cfg.clockIdle);
+      const bool sampleEdge = cfg.phase == AnalyzerEnums::LeadingEdge ? leading : !leading;
+      ++halfCycle;
+      if (!sampleEdge)
+         continue;
+
+      const U64 sample = mClock->GetSampleNumber();
+      if (bitCount == 0)
+         firstSample = sample;
+      lastSample = sample;
+
+      if (mMosi != NULL) {
+         mMosi->AdvanceToAbsPosition(sample);
+         const U64 bit = mMosi->GetBitState() == BIT_HIGH ? 1 : 0;
+         if (cfg.shiftOrder == AnalyzerEnums::MsbFirst)
+            mosiWord = (mosiWord << 1) | bit;
+         else
+            mosiWord |= bit << bitCount;
       }
-      Frame frame = {};
-      frame.mStartingSampleInclusive = first;
-      frame.mEndingSampleInclusive = last;
-      frame.mData1 = mosiWord;
-      frame.mData2 = misoWord;
-      frame.mFlags = U8(cs << 4);
-      mResults->AddFrame(frame);
-      U8 mosiBytes[8] = {};
-      U8 misoBytes[8] = {};
-      for (U32 i = 0; i < bytes; ++i) {
-         const U32 shift = (bytes - i - 1) * 8;
-         mosiBytes[i] = U8(mosiWord >> shift);
-         misoBytes[i] = U8(misoWord >> shift);
+      if (mMiso != NULL) {
+         mMiso->AdvanceToAbsPosition(sample);
+         const U64 bit = mMiso->GetBitState() == BIT_HIGH ? 1 : 0;
+         if (cfg.shiftOrder == AnalyzerEnums::MsbFirst)
+            misoWord = (misoWord << 1) | bit;
+         else
+            misoWord |= bit << bitCount;
       }
-      FrameV2 result;
-      result.AddByteArray("mosi", mosiBytes, bytes);
-      result.AddByteArray("miso", misoBytes, bytes);
-      result.AddByteArray("cs", &csByte, 1);
-      mResults->AddFrameV2(result, "result", first, last + 1);
-      mResults->CommitResults();
+
+      ++bitCount;
+      if (bitCount == wordBits) {
+         EmitWord(cs, firstSample, lastSample, mosiWord, misoWord);
+         bitCount = 0;
+         mosiWord = 0;
+         misoWord = 0;
+      }
    }
-   FrameV2 finish;
-   finish.AddByteArray("cs", &csByte, 1);
-   mResults->AddFrameV2(finish, "disable", mEnable->GetSampleNumber(),
-                        mEnable->GetSampleNumber() + 1);
+
+   FrameV2 disable;
+   disable.AddByteArray("cs", &csByte, 1);
+   mResults->AddFrameV2(disable, "disable", end, end + 1);
    mResults->CommitResults();
 }
 
 void SpiAnalyzer::WorkerThread()
 {
-   Setup();
-   U64 start;
-   while (NextEnableStart(&start)) {
-      const U32 cs = ReadMuxAddress(start);
-      DecodeTransaction(start, cs);
-      ReportProgress(mEnable->GetSampleNumber());
+   SetupChannels();
+
+   // MUX_EN is active low. The enable edges define complete transactions;
+   // the clock is never allowed to advance past the current rising edge.
+   while (true) {
+      CheckIfThreadShouldExit();
+      if (!mEnable->DoMoreTransitionsExistInCurrentData())
+         return;
+      mEnable->AdvanceToNextEdge();
+      if (mEnable->GetBitState() != BIT_LOW)
+         continue;
+
+      const U64 start = mEnable->GetSampleNumber();
+      const U32 cs = ReadAddress(start);
+
+      if (!mEnable->DoMoreTransitionsExistInCurrentData())
+         return;
+      const U64 end = mEnable->GetSampleOfNextEdge();
+      DecodeSelection(start, end, cs);
+      mEnable->AdvanceToNextEdge();
+      ReportProgress(end);
    }
 }
 
@@ -211,6 +188,7 @@ U32 SpiAnalyzer::GenerateSimulationData(U64 sample, U32 rate,
    }
    return mSimulationDataGenerator.GenerateSimulationData(sample, rate, channels);
 }
+
 U32 SpiAnalyzer::GetMinimumSampleRateHz() { return 10000; }
 const char *SpiAnalyzer::GetAnalyzerName() const { return "SPI MUX (RB)"; }
 bool SpiAnalyzer::NeedsRerun() { return false; }
