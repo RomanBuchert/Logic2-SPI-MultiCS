@@ -228,7 +228,7 @@ void SpiAnalyzerSettings::LoadSettings( const char* settings )
 
     const char* name_string; // the first thing in the archive is the name of the protocol analyzer that the data belongs to.
     text_archive >> &name_string;
-    if( strcmp( name_string, "SaleaeSpiAnalyzer" ) != 0 )
+    if( strcmp( name_string, "SaleaeSpiMultiCSAnalyzer" ) != 0 && strcmp( name_string, "SaleaeSpiAnalyzer" ) != 0 )
         AnalyzerHelpers::Assert( "SaleaeSpiAnalyzer: Provided with a settings string that doesn't belong to us;" );
 
     text_archive >> mMosiChannel;
@@ -272,7 +272,7 @@ const char* SpiAnalyzerSettings::SaveSettings()
 {
     SimpleArchive text_archive;
 
-    text_archive << "SaleaeSpiAnalyzer";
+    text_archive << "SaleaeSpiMultiCSAnalyzer";
     text_archive << mMosiChannel;
     text_archive << mMisoChannel;
     text_archive << mClockChannel;
