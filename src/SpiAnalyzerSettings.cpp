@@ -26,7 +26,8 @@ SpiAnalyzerSettings::SpiAnalyzerSettings()
    AddInterface(mClockInterface.get());
 
    mMuxEnableInterface.reset(new AnalyzerSettingInterfaceChannel());
-   mMuxEnableInterface->SetTitleAndTooltip("MUX_EN", "Active-low MUX enable (required)");
+   mMuxEnableInterface->SetTitleAndTooltip("MUX_EN", "Optional active-low MUX enable");
+   mMuxEnableInterface->SetSelectionOfNoneIsAllowed(true);
    mMuxEnableInterface->SetChannel(mMuxEnableChannel);
    AddInterface(mMuxEnableInterface.get());
 
@@ -35,7 +36,8 @@ SpiAnalyzerSettings::SpiAnalyzerSettings()
       mMuxAddressInterfaces[i].reset(new AnalyzerSettingInterfaceChannel());
       std::stringstream label;
       label << "MUX_" << char('A' + i);
-      mMuxAddressInterfaces[i]->SetTitleAndTooltip(label.str().c_str(), "Required MUX address bit");
+      mMuxAddressInterfaces[i]->SetTitleAndTooltip(label.str().c_str(), "Optional consecutive MUX address bit");
+      mMuxAddressInterfaces[i]->SetSelectionOfNoneIsAllowed(true);
       mMuxAddressInterfaces[i]->SetChannel(mMuxAddressChannels[i]);
       AddInterface(mMuxAddressInterfaces[i].get());
    }
@@ -187,19 +189,16 @@ bool SpiAnalyzerSettings::SetSettingsFromInterfaces()
    channels.push_back(enable);
    for (U32 i = 0; i < 4; ++i)
       channels.push_back(mMuxAddressInterfaces[i]->GetChannel());
-   if (clock == UNDEFINED_CHANNEL || enable == UNDEFINED_CHANNEL) {
-      SetErrorText("SCK and MUX_EN are required.");
+   if (clock == UNDEFINED_CHANNEL) {
+      SetErrorText("SCK is required.");
       return false;
    }
-   for (U32 i = 0; i < 4; ++i) {
-      if (mMuxAddressInterfaces[i]->GetChannel() == UNDEFINED_CHANNEL) {
-         SetErrorText("All four MUX address channels A-D are required.");
+   for (U32 i = 1; i < 4; ++i) {
+      if (mMuxAddressInterfaces[i]->GetChannel() != UNDEFINED_CHANNEL &&
+          mMuxAddressInterfaces[i - 1]->GetChannel() == UNDEFINED_CHANNEL) {
+         SetErrorText("MUX address pins must be consecutive starting with MUX_A.");
          return false;
       }
-   }
-   if (mosi == UNDEFINED_CHANNEL && miso == UNDEFINED_CHANNEL) {
-      SetErrorText("MOSI or MISO is required.");
-      return false;
    }
    if (AnalyzerHelpers::DoChannelsOverlap(&channels[0], U32(channels.size()))) {
       SetErrorText("Each input must use a different channel.");
