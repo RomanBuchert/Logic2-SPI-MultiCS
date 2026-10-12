@@ -87,15 +87,6 @@ void SpiAnalyzer::DecodeSelection(U64 start, U64 end, U32 cs)
    if (wordBits == 0 || wordBits > 64)
       return;
 
-   // Legacy frames must be inserted in chronological order. The transaction
-   // boundaries are known before decoding its words, so emit the selection first.
-   Frame selection = {};
-   selection.mStartingSampleInclusive = start;
-   selection.mEndingSampleInclusive = end;
-   selection.mData1 = cs;
-   selection.mFlags = 0x02;
-   mResults->AddFrame(selection);
-
    const U8 csByte = U8(cs);
    FrameV2 enable;
    enable.AddByteArray("cs", &csByte, 1);
@@ -125,10 +116,6 @@ void SpiAnalyzer::DecodeSelection(U64 start, U64 end, U32 cs)
          continue;
 
       const U64 sample = mClock->GetSampleNumber();
-      mResults->AddMarker(sample,
-                          mClock->GetBitState() == BIT_HIGH
-                             ? AnalyzerResults::UpArrow : AnalyzerResults::DownArrow,
-                          mSettings->mClockChannel);
       if (bitCount == 0)
          firstSample = sample;
       lastSample = sample;
@@ -158,6 +145,15 @@ void SpiAnalyzer::DecodeSelection(U64 start, U64 end, U32 cs)
          misoWord = 0;
       }
    }
+
+   // Legacy frame for a single transaction-wide bubble on the enable channel.
+   // The existing FrameV2 data table remains unchanged.
+   Frame selection = {};
+   selection.mStartingSampleInclusive = start;
+   selection.mEndingSampleInclusive = end;
+   selection.mData1 = cs;
+   selection.mFlags = 0x02;
+   mResults->AddFrame(selection);
 
    FrameV2 disable;
    disable.AddByteArray("cs", &csByte, 1);
