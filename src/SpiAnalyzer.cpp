@@ -163,7 +163,7 @@ void SpiAnalyzer::DecodeTransaction(U64 start, U32 cs)
       frame.mEndingSampleInclusive = last;
       frame.mData1 = mosiWord;
       frame.mData2 = misoWord;
-      frame.mFlags = (cs << 8);
+      frame.mFlags = U8(cs << 4);
       mResults->AddFrame(frame);
       U8 mosiBytes[8] = {};
       U8 misoBytes[8] = {};
