@@ -1,409 +1,216 @@
-﻿
 #include "SpiAnalyzer.h"
 #include "SpiAnalyzerSettings.h"
-
 #include <AnalyzerChannelData.h>
 
-
-// enum SpiBubbleType { SpiData, SpiError };
-
 SpiAnalyzer::SpiAnalyzer()
-    : Analyzer2(),
-      mSettings( new SpiAnalyzerSettings() ),
-      mSimulationInitilized( false ),
-      mMosi( NULL ),
-      mMiso( NULL ),
-      mClock( NULL ),
-      mEnable( NULL ),
-      mActiveCS(0)
+   : Analyzer2(), mSettings(new SpiAnalyzerSettings()), mSimulationInitialized(false),
+     mClock(NULL), mMosi(NULL), mMiso(NULL), mEnable(NULL)
 {
-    SetAnalyzerSettings( mSettings.get() );
-    UseFrameV2();
+   SetAnalyzerSettings(mSettings.get());
+   UseFrameV2();
 }
 
-SpiAnalyzer::~SpiAnalyzer()
-{
-    KillThread();
-}
+SpiAnalyzer::~SpiAnalyzer() { KillThread(); }
 
 void SpiAnalyzer::SetupResults()
 {
-    mResults.reset( new SpiAnalyzerResults( this, mSettings.get() ) );
-    SetAnalyzerResults( mResults.get() );
-
-    if( mSettings->mMosiChannel != UNDEFINED_CHANNEL )
-        mResults->AddChannelBubblesWillAppearOn( mSettings->mMosiChannel );
-    if( mSettings->mMisoChannel != UNDEFINED_CHANNEL )
-        mResults->AddChannelBubblesWillAppearOn( mSettings->mMisoChannel );
-}
-
-void SpiAnalyzer::WorkerThread()
-{
-    Setup();
-
-    AdvanceToActiveEnableEdgeWithCorrectClockPolarity();
-
-    for( ;; )
-    {
-        GetWord();
-        CheckIfThreadShouldExit();
-    }
-}
-
-void SpiAnalyzer::AdvanceToActiveEnableEdgeWithCorrectClockPolarity()
-{
-    mResults->CommitPacketAndStartNewPacket();
-    mResults->CommitResults();
-
-    AdvanceToActiveEnableEdge();
-
-    for( ;; )
-    {
-        if( IsInitialClockPolarityCorrect() == true ) // if false, this function moves to the next active enable edge.
-        {
-            if( mEnable )
-            {
-                FrameV2 frame_v2_start_of_transaction;
-                mResults->AddFrameV2( frame_v2_start_of_transaction, "enable", mCurrentSample, mCurrentSample + 1 );
-            }
-            break;
-        }
-    }
+   mResults.reset(new SpiAnalyzerResults(this, mSettings.get()));
+   SetAnalyzerResults(mResults.get());
+   if (mSettings->mMosiChannel != UNDEFINED_CHANNEL)
+      mResults->AddChannelBubblesWillAppearOn(mSettings->mMosiChannel);
+   if (mSettings->mMisoChannel != UNDEFINED_CHANNEL)
+      mResults->AddChannelBubblesWillAppearOn(mSettings->mMisoChannel);
 }
 
 void SpiAnalyzer::Setup()
 {
-    bool allow_last_trailing_clock_edge_to_fall_outside_enable = false;
-    if( mSettings->mDataValidEdge == AnalyzerEnums::LeadingEdge )
-        allow_last_trailing_clock_edge_to_fall_outside_enable = true;
-
-    if( mSettings->mClockInactiveState == BIT_LOW )
-    {
-        if( mSettings->mDataValidEdge == AnalyzerEnums::LeadingEdge )
-            mArrowMarker = AnalyzerResults::UpArrow;
-        else
-            mArrowMarker = AnalyzerResults::DownArrow;
-    }
-    else
-    {
-        if( mSettings->mDataValidEdge == AnalyzerEnums::LeadingEdge )
-            mArrowMarker = AnalyzerResults::DownArrow;
-        else
-            mArrowMarker = AnalyzerResults::UpArrow;
-    }
-
-
-    if( mSettings->mMosiChannel != UNDEFINED_CHANNEL )
-        mMosi = GetAnalyzerChannelData( mSettings->mMosiChannel );
-    else
-        mMosi = NULL;
-
-    if( mSettings->mMisoChannel != UNDEFINED_CHANNEL )
-        mMiso = GetAnalyzerChannelData( mSettings->mMisoChannel );
-    else
-        mMiso = NULL;
-
-
-    mClock = GetAnalyzerChannelData( mSettings->mClockChannel );
-
-    if( mSettings->mEnableChannel != UNDEFINED_CHANNEL )
-        mEnable = GetAnalyzerChannelData( mSettings->mEnableChannel );
-    else
-        mEnable = NULL;
-    for (U32 i = 0; i < 3; ++i)
-        mExtraCSData[i] = mSettings->mExtraCS[i] == UNDEFINED_CHANNEL ? NULL : GetAnalyzerChannelData(mSettings->mExtraCS[i]);
+   mClock = GetAnalyzerChannelData(mSettings->mClockChannel);
+   mEnable = GetAnalyzerChannelData(mSettings->mMuxEnableChannel);
+   mMosi = mSettings->mMosiChannel == UNDEFINED_CHANNEL
+              ? NULL : GetAnalyzerChannelData(mSettings->mMosiChannel);
+   mMiso = mSettings->mMisoChannel == UNDEFINED_CHANNEL
+              ? NULL : GetAnalyzerChannelData(mSettings->mMisoChannel);
+   for (U32 i = 0; i < 4; ++i)
+      mAddress[i] = GetAnalyzerChannelData(mSettings->mMuxAddressChannels[i]);
 }
 
-void SpiAnalyzer::AdvanceToActiveEnableEdge()
+U32 SpiAnalyzer::ReadMuxAddress(U64 sample)
 {
-    if( mEnable != NULL )
-    {
-        if( mEnable->GetBitState() != mSettings->mEnableActiveState )
-        {
-            mEnable->AdvanceToNextEdge();
-        }
-        else
-        {
-            mEnable->AdvanceToNextEdge();
-            mEnable->AdvanceToNextEdge();
-        }
-        mCurrentSample = mEnable->GetSampleNumber();
-        mClock->AdvanceToAbsPosition( mCurrentSample );
-    }
-    else
-    {
-        mCurrentSample = mClock->GetSampleNumber();
-    }
+   U32 address = 0;
+   for (U32 i = 0; i < 4; ++i) {
+      mAddress[i]->AdvanceToAbsPosition(sample);
+      if (mAddress[i]->GetBitState() == BIT_HIGH) address |= (1U << i);
+   }
+   return address;
 }
 
-bool SpiAnalyzer::IsInitialClockPolarityCorrect()
+bool SpiAnalyzer::EdgeBefore(U64 sample, AnalyzerChannelData *channel)
 {
-    if( mClock->GetBitState() == mSettings->mClockInactiveState )
-        return true;
-
-    mResults->AddMarker( mCurrentSample, AnalyzerResults::ErrorSquare, mSettings->mClockChannel );
-
-    if( mEnable != NULL )
-    {
-        Frame error_frame;
-        error_frame.mStartingSampleInclusive = mCurrentSample;
-
-        mEnable->AdvanceToNextEdge();
-        mCurrentSample = mEnable->GetSampleNumber();
-
-        error_frame.mEndingSampleInclusive = mCurrentSample;
-        error_frame.mFlags = SPI_ERROR_FLAG | DISPLAY_AS_ERROR_FLAG;
-        mResults->AddFrame( error_frame );
-
-        FrameV2 framev2;
-        mResults->AddFrameV2( framev2, "error", error_frame.mStartingSampleInclusive, error_frame.mEndingSampleInclusive + 1 );
-
-        mResults->CommitResults();
-        ReportProgress( error_frame.mEndingSampleInclusive );
-
-        // move to the next active-going enable edge
-        mEnable->AdvanceToNextEdge();
-        mCurrentSample = mEnable->GetSampleNumber();
-        mClock->AdvanceToAbsPosition( mCurrentSample );
-
-        return false;
-    }
-    else
-    {
-        mClock->AdvanceToNextEdge(); // at least start with the clock in the idle state.
-        mCurrentSample = mClock->GetSampleNumber();
-        return true;
-    }
+   return channel->DoMoreTransitionsExistInCurrentData() &&
+          channel->GetSampleOfNextEdge() <= sample;
 }
 
-bool SpiAnalyzer::WouldAdvancingTheClockToggleEnable( bool add_disable_frame, U64* disable_frame )
+bool SpiAnalyzer::AddressChangedBefore(U64 sample)
 {
-    if( mEnable == NULL )
-        return false;
-
-    auto log_disable_event = [&]( U64 enable_edge ) {
-        if( add_disable_frame )
-        {
-            FrameV2 frame_v2_end_of_transaction;
-            mResults->AddFrameV2( frame_v2_end_of_transaction, "disable", enable_edge, enable_edge + 1 );
-        }
-        else if( disable_frame != nullptr )
-        {
-            *disable_frame = enable_edge;
-        }
-    };
-
-    // if the enable is currently active, and there are no more clock transitions in the capture, attempt to capture the final disable event
-    if( !mClock->DoMoreTransitionsExistInCurrentData() && mEnable->GetBitState() == mSettings->mEnableActiveState )
-    {
-        if( mEnable->DoMoreTransitionsExistInCurrentData() )
-        {
-            U64 next_enable_edge = mEnable->GetSampleOfNextEdge();
-            // double check that the clock line actually processed all samples up to the next enable edge.
-            // double check is required becase data is getting processed while we're running, it's possible more has already become
-            // available.
-            if( !mClock->WouldAdvancingToAbsPositionCauseTransition( next_enable_edge ) )
-            {
-                log_disable_event( next_enable_edge );
-                return true;
-            }
-        }
-    }
-
-    U64 next_edge = mClock->GetSampleOfNextEdge();
-    bool enable_will_toggle = mEnable->WouldAdvancingToAbsPositionCauseTransition( next_edge );
-
-    if( enable_will_toggle )
-    {
-        U64 enable_edge = mEnable->GetSampleOfNextEdge();
-        log_disable_event( enable_edge );
-    }
-
-    if( enable_will_toggle == false )
-        return false;
-    else
-        return true;
+   for (U32 i = 0; i < 4; ++i)
+      if (EdgeBefore(sample, mAddress[i])) return true;
+   return false;
 }
 
-void SpiAnalyzer::GetWord()
+void SpiAnalyzer::EmitError(U64 start, U64 end, U32 cs)
 {
-    // we're assuming we come into this function with the clock in the idle state;
+   if (end < start) end = start;
+   Frame frame = {};
+   frame.mStartingSampleInclusive = start;
+   frame.mEndingSampleInclusive = end;
+   frame.mFlags = SPI_ERROR_FLAG | DISPLAY_AS_ERROR_FLAG;
+   frame.mData1 = cs;
+   mResults->AddFrame(frame);
+   FrameV2 event;
+   event.AddInteger("cs", cs);
+   mResults->AddFrameV2(event, "error", start, end + 1);
+   mResults->AddMarker(start, AnalyzerResults::ErrorSquare, mSettings->mClockChannel);
+   mResults->CommitResults();
+}
 
-    const U32 bits_per_transfer = mSettings->mBitsPerTransfer;
-    const U32 bytes_per_transfer = ( bits_per_transfer + 7 ) / 8;
+bool SpiAnalyzer::NextEnableStart(U64 *sample)
+{
+   // Start only on an inactive-to-active transition, never on an arbitrary clock edge.
+   for (;;) {
+      CheckIfThreadShouldExit();
+      if (!mEnable->DoMoreTransitionsExistInCurrentData()) return false;
+      mEnable->AdvanceToNextEdge();
+      if (mEnable->GetBitState() == BIT_LOW) {
+         *sample = mEnable->GetSampleNumber();
+         return true;
+      }
+   }
+}
 
-    U64 mosi_word = 0;
-    mMosiResult.Reset( &mosi_word, mSettings->mShiftOrder, bits_per_transfer );
+void SpiAnalyzer::DecodeTransaction(U64 start, U32 cs)
+{
+   const SpiClientSettings &cfg = mSettings->mClients[cs];
+   const U32 bits = cfg.bitsPerTransfer;
+   if (bits < 1 || bits > 64) return;
+   const U32 bytes = (bits + 7) / 8;
+   mClock->AdvanceToAbsPosition(start);
+   if (mClock->GetBitState() != cfg.clockIdle) {
+      EmitError(start, start, cs);
+      return;
+   }
+   FrameV2 begin;
+   begin.AddInteger("cs", cs);
+   mResults->AddFrameV2(begin, "enable", start, start + 1);
+   mResults->CommitPacketAndStartNewPacket();
+   mResults->CommitResults();
 
-    U64 miso_word = 0;
-    mMisoResult.Reset( &miso_word, mSettings->mShiftOrder, bits_per_transfer );
+   const AnalyzerResults::MarkerType marker =
+      (cfg.clockIdle == BIT_LOW) ==
+      (cfg.phase == AnalyzerEnums::LeadingEdge)
+         ? AnalyzerResults::UpArrow : AnalyzerResults::DownArrow;
 
-    U64 first_sample = 0;
-    bool need_reset = false;
-    U64 disable_event_sample = 0;
-
-
-    mArrowLocations.clear();
-    ReportProgress( mClock->GetSampleNumber() );
-
-    for( U32 i = 0; i < bits_per_transfer; i++ )
-    {
-        if( i == 0 )
-            CheckIfThreadShouldExit();
-
-        // on every single edge, we need to check that enable doesn't toggle.
-        // note that we can't just advance the enable line to the next edge, becuase there may not be another edge
-
-        if( WouldAdvancingTheClockToggleEnable( true, nullptr ) == true )
-        {
-            AdvanceToActiveEnableEdgeWithCorrectClockPolarity(); // ok, we pretty much need to reset everything and return.
-            return;
-        }
-
-        mClock->AdvanceToNextEdge();
-        if( i == 0 )
-            first_sample = mClock->GetSampleNumber();
-
-        if( mSettings->mDataValidEdge == AnalyzerEnums::LeadingEdge )
-        {
-            mCurrentSample = mClock->GetSampleNumber();
-            if( mMosi != NULL )
-            {
-                mMosi->AdvanceToAbsPosition( mCurrentSample );
-                mMosiResult.AddBit( mMosi->GetBitState() );
+   for (;;) {
+      CheckIfThreadShouldExit();
+      if (!mEnable->DoMoreTransitionsExistInCurrentData()) return;
+      U64 end = mEnable->GetSampleOfNextEdge();
+      if (AddressChangedBefore(end)) {
+         EmitError(start, end, cs);
+         mEnable->AdvanceToAbsPosition(end);
+         return;
+      }
+      U64 mosiWord = 0;
+      U64 misoWord = 0;
+      DataBuilder mosiBuilder;
+      DataBuilder misoBuilder;
+      mosiBuilder.Reset(&mosiWord, cfg.shiftOrder, bits);
+      misoBuilder.Reset(&misoWord, cfg.shiftOrder, bits);
+      U64 first = 0;
+      U64 last = 0;
+      bool complete = true;
+      for (U32 bit = 0; bit < bits; ++bit) {
+         CheckIfThreadShouldExit();
+         // Two clock edges per bit. For CPHA=0 sample the first; for CPHA=1 the second.
+         for (U32 half = 0; half < 2; ++half) {
+            if (!mClock->DoMoreTransitionsExistInCurrentData()) return;
+            U64 next = mClock->GetSampleOfNextEdge();
+            if (next >= end || AddressChangedBefore(next)) {
+               complete = false;
+               break;
             }
-            if( mMiso != NULL )
-            {
-                mMiso->AdvanceToAbsPosition( mCurrentSample );
-                mMisoResult.AddBit( mMiso->GetBitState() );
-            }
-            mArrowLocations.push_back( mCurrentSample );
-        }
-
-
-        // ok, the trailing edge is messy -- but only on the very last bit.
-        // If the trialing edge isn't doesn't represent valid data, we want to allow the enable line to rise before the clock trialing edge
-        // -- and still report the frame
-        if( ( i == ( bits_per_transfer - 1 ) ) && ( mSettings->mDataValidEdge != AnalyzerEnums::TrailingEdge ) )
-        {
-            // if this is the last bit, and the trailing edge doesn't represent valid data
-            if( WouldAdvancingTheClockToggleEnable( false, &disable_event_sample ) == true )
-            {
-                // moving to the trailing edge would cause the clock to revert to inactive.  jump out, record the frame, and them move to
-                // the next active enable edge
-                need_reset = true;
-                break;
-            }
-
-            // enable isn't going to go inactive, go ahead and advance the clock as usual.  Then we're done, jump out and record the frame.
             mClock->AdvanceToNextEdge();
-            break;
-        }
-
-        // this isn't the very last bit, etc, so proceed as normal
-        if( WouldAdvancingTheClockToggleEnable( true, nullptr ) == true )
-        {
-            AdvanceToActiveEnableEdgeWithCorrectClockPolarity(); // ok, we pretty much need to reset everything and return.
-            return;
-        }
-
-        mClock->AdvanceToNextEdge();
-
-        if( mSettings->mDataValidEdge == AnalyzerEnums::TrailingEdge )
-        {
-            mCurrentSample = mClock->GetSampleNumber();
-            if( mMosi != NULL )
-            {
-                mMosi->AdvanceToAbsPosition( mCurrentSample );
-                mMosiResult.AddBit( mMosi->GetBitState() );
+            if (half == U32(cfg.phase == AnalyzerEnums::TrailingEdge)) {
+               U64 sample = mClock->GetSampleNumber();
+               if (bit == 0) first = sample;
+               last = sample;
+               if (mMosi != NULL) {
+                  mMosi->AdvanceToAbsPosition(sample);
+                  mosiBuilder.AddBit(mMosi->GetBitState());
+               }
+               if (mMiso != NULL) {
+                  mMiso->AdvanceToAbsPosition(sample);
+                  misoBuilder.AddBit(mMiso->GetBitState());
+               }
+               mResults->AddMarker(sample, marker, mSettings->mClockChannel);
             }
-            if( mMiso != NULL )
-            {
-                mMiso->AdvanceToAbsPosition( mCurrentSample );
-                mMisoResult.AddBit( mMiso->GetBitState() );
-            }
-            mArrowLocations.push_back( mCurrentSample );
-        }
-    }
-
-    // save the results:
-    U32 count = mArrowLocations.size();
-    for( U32 i = 0; i < count; i++ )
-        mResults->AddMarker( mArrowLocations[ i ], mArrowMarker, mSettings->mClockChannel );
-
-    Frame result_frame;
-    result_frame.mStartingSampleInclusive = first_sample;
-    result_frame.mEndingSampleInclusive = mClock->GetSampleNumber();
-    result_frame.mData1 = mosi_word;
-    result_frame.mData2 = miso_word;
-    result_frame.mFlags = 0;
-    mResults->AddFrame( result_frame );
-
-    FrameV2 framev2;
-
-    // Max bits per transfer == 64, max bytes == 8
-    U8 mosi_bytearray[ 8 ];
-    U8 miso_bytearray[ 8 ];
-    for( int i = 0; i < bytes_per_transfer; ++i )
-    {
-        auto bit_offset = ( bytes_per_transfer - i - 1 ) * 8;
-        mosi_bytearray[ i ] = mosi_word >> bit_offset;
-        miso_bytearray[ i ] = miso_word >> bit_offset;
-    }
-    framev2.AddByteArray( "mosi", mosi_bytearray, bytes_per_transfer );
-    framev2.AddByteArray( "miso", miso_bytearray, bytes_per_transfer );
-
-    mResults->AddFrameV2( framev2, "result", first_sample, mClock->GetSampleNumber() + 1 );
-
-    mResults->CommitResults();
-
-    if( need_reset == true )
-    {
-        FrameV2 frame_v2_end_of_transaction;
-        mResults->AddFrameV2( frame_v2_end_of_transaction, "disable", disable_event_sample, disable_event_sample + 1 );
-        AdvanceToActiveEnableEdgeWithCorrectClockPolarity();
-    }
+         }
+         if (!complete) break;
+      }
+      if (!complete) {
+         if (AddressChangedBefore(end)) EmitError(start, end, cs);
+         mEnable->AdvanceToAbsPosition(end);
+         break;
+      }
+      Frame frame = {};
+      frame.mStartingSampleInclusive = first;
+      frame.mEndingSampleInclusive = last;
+      frame.mData1 = mosiWord;
+      frame.mData2 = misoWord;
+      frame.mFlags = (cs << 8);
+      mResults->AddFrame(frame);
+      U8 mosiBytes[8] = {};
+      U8 misoBytes[8] = {};
+      for (U32 i = 0; i < bytes; ++i) {
+         const U32 shift = (bytes - i - 1) * 8;
+         mosiBytes[i] = U8(mosiWord >> shift);
+         misoBytes[i] = U8(misoWord >> shift);
+      }
+      FrameV2 result;
+      result.AddByteArray("mosi", mosiBytes, bytes);
+      result.AddByteArray("miso", misoBytes, bytes);
+      result.AddInteger("cs", cs);
+      mResults->AddFrameV2(result, "result", first, last + 1);
+      mResults->CommitResults();
+   }
+   FrameV2 finish;
+   finish.AddInteger("cs", cs);
+   mResults->AddFrameV2(finish, "disable", mEnable->GetSampleNumber(),
+                        mEnable->GetSampleNumber() + 1);
+   mResults->CommitResults();
 }
 
-bool SpiAnalyzer::NeedsRerun()
+void SpiAnalyzer::WorkerThread()
 {
-    return false;
+   Setup();
+   U64 start;
+   while (NextEnableStart(&start)) {
+      const U32 cs = ReadMuxAddress(start);
+      DecodeTransaction(start, cs);
+      ReportProgress(mEnable->GetSampleNumber());
+   }
 }
 
-U32 SpiAnalyzer::GenerateSimulationData( U64 minimum_sample_index, U32 device_sample_rate,
-                                         SimulationChannelDescriptor** simulation_channels )
+U32 SpiAnalyzer::GenerateSimulationData(U64 sample, U32 rate,
+                                        SimulationChannelDescriptor **channels)
 {
-    if( mSimulationInitilized == false )
-    {
-        mSimulationDataGenerator.Initialize( GetSimulationSampleRate(), mSettings.get() );
-        mSimulationInitilized = true;
-    }
-
-    return mSimulationDataGenerator.GenerateSimulationData( minimum_sample_index, device_sample_rate, simulation_channels );
+   if (!mSimulationInitialized) {
+      mSimulationDataGenerator.Initialize(GetSimulationSampleRate(), mSettings.get());
+      mSimulationInitialized = true;
+   }
+   return mSimulationDataGenerator.GenerateSimulationData(sample, rate, channels);
 }
-
-
-U32 SpiAnalyzer::GetMinimumSampleRateHz()
-{
-    return 10000; // we don't have any idea, depends on the SPI rate, etc.; return the lowest rate.
-}
-
-const char* SpiAnalyzer::GetAnalyzerName() const
-{
-    return "SPI Multi-CS (RB)";
-}
-
-const char* GetAnalyzerName()
-{
-    return "SPI Multi-CS (RB)";
-}
-
-Analyzer* CreateAnalyzer()
-{
-    return new SpiAnalyzer();
-}
-
-void DestroyAnalyzer( Analyzer* analyzer )
-{
-    delete analyzer;
-}
+U32 SpiAnalyzer::GetMinimumSampleRateHz() { return 10000; }
+const char *SpiAnalyzer::GetAnalyzerName() const { return "SPI MUX (RB)"; }
+bool SpiAnalyzer::NeedsRerun() { return false; }
+const char *GetAnalyzerName() { return "SPI MUX (RB)"; }
+Analyzer *CreateAnalyzer() { return new SpiAnalyzer(); }
+void DestroyAnalyzer(Analyzer *analyzer) { delete analyzer; }
