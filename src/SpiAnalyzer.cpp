@@ -390,12 +390,12 @@ U32 SpiAnalyzer::GetMinimumSampleRateHz()
 
 const char* SpiAnalyzer::GetAnalyzerName() const
 {
-    return "SPI Multi-CS";
+    return "SPI Multi-CS (RB)";
 }
 
 const char* GetAnalyzerName()
 {
-    return "SPI Multi-CS";
+    return "SPI Multi-CS (RB)";
 }
 
 Analyzer* CreateAnalyzer()
