@@ -227,6 +227,8 @@ void SpiAnalyzerSettings::UpdateInterfacesFromSettings()
     mMisoChannelInterface->SetChannel( mMisoChannel );
     mClockChannelInterface->SetChannel( mClockChannel );
     mEnableChannelInterface->SetChannel( mEnableChannel );
+    for (U32 i = 0; i < 3; ++i)
+        mExtraCSInterfaces[i]->SetChannel(mExtraCS[i]);
     mShiftOrderInterface->SetNumber( mShiftOrder );
     mBitsPerTransferInterface->SetNumber( mBitsPerTransfer );
     mClockInactiveStateInterface->SetNumber( mClockInactiveState );
