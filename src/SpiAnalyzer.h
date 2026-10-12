@@ -41,6 +41,8 @@ class SpiAnalyzer : public Analyzer2
     AnalyzerChannelData* mMiso;
     AnalyzerChannelData* mClock;
     AnalyzerChannelData* mEnable;
+    AnalyzerChannelData* mExtraCSData[3];
+    U32 mActiveCS;
 
     U64 mCurrentSample;
     AnalyzerResults::MarkerType mArrowMarker;
