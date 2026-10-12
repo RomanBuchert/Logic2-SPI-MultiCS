@@ -24,6 +24,7 @@ void SpiAnalyzer::SetupResults()
       mResults->AddChannelBubblesWillAppearOn(mSettings->mMosiChannel);
    if (mSettings->mMisoChannel != UNDEFINED_CHANNEL)
       mResults->AddChannelBubblesWillAppearOn(mSettings->mMisoChannel);
+   mResults->AddChannelBubblesWillAppearOn(mSettings->mMuxEnableChannel);
 }
 
 void SpiAnalyzer::SetupChannels()
@@ -148,7 +149,13 @@ void SpiAnalyzer::DecodeSelection(U64 start, U64 end, U32 cs)
    // Publish the complete transaction as one batch. Insert the selection
    // before its data words to keep legacy frames ordered by start time.
    // FrameV2 events retain their original timestamps and schema.
-   // Diagnostic: disable the overlapping legacy MUX selection frame.
+   // Experimental: publish the transaction-wide selection first.
+   Frame selection = {};
+   selection.mStartingSampleInclusive = start;
+   selection.mEndingSampleInclusive = end > start ? end - 1 : start;
+   selection.mData1 = cs;
+   selection.mFlags = 0x02;
+   mResults->AddFrame(selection);
    for (size_t i = 0; i < words.size(); ++i)
       EmitWord(cs, words[i]);
 
