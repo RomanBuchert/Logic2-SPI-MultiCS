@@ -24,9 +24,8 @@ void SpiAnalyzerResults::GenerateBubbleText( U64 frame_index, Channel& channel,
 
     if( channel == mSettings->mMuxEnableChannel )
     {
-        char label[16];
-        sprintf(label, "CS%02u", U32((frame.mFlags >> 4) & 15));
-        AddResultString(label);
+        const std::string label = mSettings->GetClientLabel(U32((frame.mFlags >> 4) & 15));
+        AddResultString(label.c_str());
         return;
     }
     if( ( frame.mFlags & SPI_ERROR_FLAG ) == 0 )
