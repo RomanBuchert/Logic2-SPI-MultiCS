@@ -20,6 +20,7 @@ class SpiAnalyzerSettings : public AnalyzerSettings
     Channel mMisoChannel;
     Channel mClockChannel;
     Channel mEnableChannel;
+    Channel mExtraCS[3];
     AnalyzerEnums::ShiftOrder mShiftOrder;
     U32 mBitsPerTransfer;
     BitState mClockInactiveState;
@@ -32,6 +33,7 @@ class SpiAnalyzerSettings : public AnalyzerSettings
     std::auto_ptr<AnalyzerSettingInterfaceChannel> mMisoChannelInterface;
     std::auto_ptr<AnalyzerSettingInterfaceChannel> mClockChannelInterface;
     std::auto_ptr<AnalyzerSettingInterfaceChannel> mEnableChannelInterface;
+    std::auto_ptr<AnalyzerSettingInterfaceChannel> mExtraCSInterfaces[3];
     std::auto_ptr<AnalyzerSettingInterfaceNumberList> mShiftOrderInterface;
     std::auto_ptr<AnalyzerSettingInterfaceNumberList> mBitsPerTransferInterface;
     std::auto_ptr<AnalyzerSettingInterfaceNumberList> mClockInactiveStateInterface;
