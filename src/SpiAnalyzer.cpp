@@ -24,26 +24,31 @@ void SpiAnalyzer::SetupResults()
       mResults->AddChannelBubblesWillAppearOn(mSettings->mMosiChannel);
    if (mSettings->mMisoChannel != UNDEFINED_CHANNEL)
       mResults->AddChannelBubblesWillAppearOn(mSettings->mMisoChannel);
-   mResults->AddChannelBubblesWillAppearOn(mSettings->mMuxEnableChannel);
+   if (mSettings->mMuxEnableChannel != UNDEFINED_CHANNEL)
+      mResults->AddChannelBubblesWillAppearOn(mSettings->mMuxEnableChannel);
 }
 
 void SpiAnalyzer::SetupChannels()
 {
    mClock = GetAnalyzerChannelData(mSettings->mClockChannel);
-   mEnable = GetAnalyzerChannelData(mSettings->mMuxEnableChannel);
+   mEnable = mSettings->mMuxEnableChannel == UNDEFINED_CHANNEL
+                ? NULL : GetAnalyzerChannelData(mSettings->mMuxEnableChannel);
    mMosi = mSettings->mMosiChannel == UNDEFINED_CHANNEL
               ? NULL : GetAnalyzerChannelData(mSettings->mMosiChannel);
    mMiso = mSettings->mMisoChannel == UNDEFINED_CHANNEL
               ? NULL : GetAnalyzerChannelData(mSettings->mMisoChannel);
 
    for (U32 i = 0; i < 4; ++i)
-      mAddress[i] = GetAnalyzerChannelData(mSettings->mMuxAddressChannels[i]);
+      mAddress[i] = mSettings->mMuxAddressChannels[i] == UNDEFINED_CHANNEL
+                       ? NULL : GetAnalyzerChannelData(mSettings->mMuxAddressChannels[i]);
 }
 
 U32 SpiAnalyzer::ReadAddress(U64 sample)
 {
    U32 cs = 0;
    for (U32 i = 0; i < 4; ++i) {
+      if (mAddress[i] == NULL)
+         continue;
       mAddress[i]->AdvanceToAbsPosition(sample);
       if (mAddress[i]->GetBitState() == BIT_HIGH)
          cs |= 1U << i;
@@ -162,6 +167,63 @@ void SpiAnalyzer::DecodeSelection(U64 start, U64 end, U32 cs)
 void SpiAnalyzer::WorkerThread()
 {
    SetupChannels();
+
+   if (mEnable == NULL) {
+      // Without MUX_EN, decode continuous clock activity. Address bits are
+      // sampled at the beginning of each word, allowing the CS to change.
+      U32 bitCount = 0;
+      U32 cs = 0;
+      U64 mosiWord = 0;
+      U64 misoWord = 0;
+      U64 firstSample = 0;
+      U64 lastSample = 0;
+      while (mClock->DoMoreTransitionsExistInCurrentData()) {
+         CheckIfThreadShouldExit();
+         mClock->AdvanceToNextEdge();
+         const U64 sample = mClock->GetSampleNumber();
+         if (bitCount == 0)
+            cs = ReadAddress(sample);
+         const SpiClientSettings &cfg = mSettings->mClients[cs];
+         const bool leading = mClock->GetBitState() != cfg.clockIdle;
+         const bool sampleEdge = cfg.phase == AnalyzerEnums::LeadingEdge ? leading : !leading;
+         if (!sampleEdge)
+            continue;
+         mResults->AddMarker(sample, mClock->GetBitState() == BIT_HIGH
+                                         ? AnalyzerResults::UpArrow
+                                         : AnalyzerResults::DownArrow,
+                             mSettings->mClockChannel);
+         if (bitCount == 0)
+            firstSample = sample;
+         lastSample = sample;
+         if (mMosi != NULL) {
+            mMosi->AdvanceToAbsPosition(sample);
+            const U64 bit = mMosi->GetBitState() == BIT_HIGH ? 1 : 0;
+            if (cfg.shiftOrder == AnalyzerEnums::MsbFirst)
+               mosiWord = (mosiWord << 1) | bit;
+            else
+               mosiWord |= bit << bitCount;
+         }
+         if (mMiso != NULL) {
+            mMiso->AdvanceToAbsPosition(sample);
+            const U64 bit = mMiso->GetBitState() == BIT_HIGH ? 1 : 0;
+            if (cfg.shiftOrder == AnalyzerEnums::MsbFirst)
+               misoWord = (misoWord << 1) | bit;
+            else
+               misoWord |= bit << bitCount;
+         }
+         ++bitCount;
+         if (bitCount == cfg.bitsPerTransfer) {
+            const DecodedWord word = {firstSample, lastSample, mosiWord, misoWord};
+            EmitWord(cs, word);
+            mResults->CommitResults();
+            ReportProgress(sample);
+            bitCount = 0;
+            mosiWord = 0;
+            misoWord = 0;
+         }
+      }
+      return;
+   }
 
    // MUX_EN is active low. The enable edges define complete transactions;
    // the clock is never allowed to advance past the current rising edge.
