@@ -14,7 +14,8 @@ SpiAnalyzer::SpiAnalyzer()
       mMosi( NULL ),
       mMiso( NULL ),
       mClock( NULL ),
-      mEnable( NULL )
+      mEnable( NULL ),
+      mActiveCS(0)
 {
     SetAnalyzerSettings( mSettings.get() );
     UseFrameV2();
@@ -109,6 +110,8 @@ void SpiAnalyzer::Setup()
         mEnable = GetAnalyzerChannelData( mSettings->mEnableChannel );
     else
         mEnable = NULL;
+    for (U32 i = 0; i < 3; ++i)
+        mExtraCSData[i] = mSettings->mExtraCS[i] == UNDEFINED_CHANNEL ? NULL : GetAnalyzerChannelData(mSettings->mExtraCS[i]);
 }
 
 void SpiAnalyzer::AdvanceToActiveEnableEdge()
@@ -387,12 +390,12 @@ U32 SpiAnalyzer::GetMinimumSampleRateHz()
 
 const char* SpiAnalyzer::GetAnalyzerName() const
 {
-    return "SPI";
+    return "SPI Multi-CS";
 }
 
 const char* GetAnalyzerName()
 {
-    return "SPI";
+    return "SPI Multi-CS";
 }
 
 Analyzer* CreateAnalyzer()
