@@ -22,6 +22,17 @@ void SpiAnalyzerResults::GenerateBubbleText( U64 frame_index, Channel& channel,
     ClearResultStrings();
     Frame frame = GetFrame( frame_index );
 
+    if( channel == mSettings->mMuxEnableChannel )
+    {
+        if( ( frame.mFlags & 0x10000 ) != 0 )
+        {
+            char label[16];
+            sprintf(label, "CS%02u", U32(frame.mData1));
+            AddResultString(label);
+        }
+        return;
+    }
+    if( ( frame.mFlags & 0x10000 ) != 0 ) return;
     if( ( frame.mFlags & SPI_ERROR_FLAG ) == 0 )
     {
         if( channel == mSettings->mMosiChannel )
@@ -72,7 +83,7 @@ void SpiAnalyzerResults::GenerateExportFile( const char* file, DisplayBase displ
     {
         Frame frame = GetFrame( i );
 
-        if( ( frame.mFlags & SPI_ERROR_FLAG ) != 0 )
+        if( ( frame.mFlags & (SPI_ERROR_FLAG | 0x10000) ) != 0 )
             continue;
 
         char time_str[ 128 ];
@@ -110,6 +121,13 @@ void SpiAnalyzerResults::GenerateFrameTabularText( U64 frame_index, DisplayBase 
 {
     ClearTabularText();
     Frame frame = GetFrame( frame_index );
+    if( ( frame.mFlags & 0x10000 ) != 0 )
+    {
+        char label[16];
+        sprintf(label, "CS%02u", U32(frame.mData1));
+        AddTabularText(label);
+        return;
+    }
 
     bool mosi_used = true;
     bool miso_used = true;
