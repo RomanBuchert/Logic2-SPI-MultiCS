@@ -24,7 +24,7 @@ void SpiAnalyzerResults::GenerateBubbleText( U64 frame_index, Channel& channel,
 
     if( channel == mSettings->mMuxEnableChannel )
     {
-        if( ( frame.mFlags & 0x10000 ) != 0 )
+        if( ( frame.mFlags & 0x02 ) != 0 )
         {
             char label[16];
             sprintf(label, "CS%02u", U32(frame.mData1));
@@ -32,19 +32,19 @@ void SpiAnalyzerResults::GenerateBubbleText( U64 frame_index, Channel& channel,
         }
         return;
     }
-    if( ( frame.mFlags & 0x10000 ) != 0 ) return;
+    if( ( frame.mFlags & 0x02 ) != 0 ) return;
     if( ( frame.mFlags & SPI_ERROR_FLAG ) == 0 )
     {
         if( channel == mSettings->mMosiChannel )
         {
             char number_str[ 128 ];
-            AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mClients[(frame.mFlags >> 8) & 15].bitsPerTransfer, number_str, 128 );
+            AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mClients[(frame.mFlags >> 4) & 15].bitsPerTransfer, number_str, 128 );
             AddResultString( number_str );
         }
         else
         {
             char number_str[ 128 ];
-            AnalyzerHelpers::GetNumberString( frame.mData2, display_base, mSettings->mClients[(frame.mFlags >> 8) & 15].bitsPerTransfer, number_str, 128 );
+            AnalyzerHelpers::GetNumberString( frame.mData2, display_base, mSettings->mClients[(frame.mFlags >> 4) & 15].bitsPerTransfer, number_str, 128 );
             AddResultString( number_str );
         }
     }
@@ -83,7 +83,7 @@ void SpiAnalyzerResults::GenerateExportFile( const char* file, DisplayBase displ
     {
         Frame frame = GetFrame( i );
 
-        if( ( frame.mFlags & (SPI_ERROR_FLAG | 0x10000) ) != 0 )
+        if( ( frame.mFlags & (SPI_ERROR_FLAG | 0x02) ) != 0 )
             continue;
 
         char time_str[ 128 ];
@@ -91,17 +91,17 @@ void SpiAnalyzerResults::GenerateExportFile( const char* file, DisplayBase displ
 
         char mosi_str[ 128 ] = "";
         if( mosi_used == true )
-            AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mClients[(frame.mFlags >> 8) & 15].bitsPerTransfer, mosi_str, 128 );
+            AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mClients[(frame.mFlags >> 4) & 15].bitsPerTransfer, mosi_str, 128 );
 
         char miso_str[ 128 ] = "";
         if( miso_used == true )
-            AnalyzerHelpers::GetNumberString( frame.mData2, display_base, mSettings->mClients[(frame.mFlags >> 8) & 15].bitsPerTransfer, miso_str, 128 );
+            AnalyzerHelpers::GetNumberString( frame.mData2, display_base, mSettings->mClients[(frame.mFlags >> 4) & 15].bitsPerTransfer, miso_str, 128 );
 
         U64 packet_id = GetPacketContainingFrameSequential( i );
         if( packet_id != INVALID_RESULT_INDEX )
-            ss << time_str << "," << packet_id << "," << ((frame.mFlags >> 8) & 15) << "," << mosi_str << "," << miso_str << std::endl;
+            ss << time_str << "," << packet_id << "," << ((frame.mFlags >> 4) & 15) << "," << mosi_str << "," << miso_str << std::endl;
         else
-            ss << time_str << ",," << ((frame.mFlags >> 8) & 15) << "," << mosi_str << "," << miso_str << std::endl; // it's ok for a frame not to be included in a packet.
+            ss << time_str << ",," << ((frame.mFlags >> 4) & 15) << "," << mosi_str << "," << miso_str << std::endl; // it's ok for a frame not to be included in a packet.
 
         AnalyzerHelpers::AppendToFile( ( U8* )ss.str().c_str(), ss.str().length(), f );
         ss.str( std::string() );
@@ -121,7 +121,7 @@ void SpiAnalyzerResults::GenerateFrameTabularText( U64 frame_index, DisplayBase 
 {
     ClearTabularText();
     Frame frame = GetFrame( frame_index );
-    if( ( frame.mFlags & 0x10000 ) != 0 )
+    if( ( frame.mFlags & 0x02 ) != 0 )
     {
         char label[16];
         sprintf(label, "CS%02u", U32(frame.mData1));
@@ -146,9 +146,9 @@ void SpiAnalyzerResults::GenerateFrameTabularText( U64 frame_index, DisplayBase 
     if( ( frame.mFlags & SPI_ERROR_FLAG ) == 0 )
     {
         if( mosi_used == true )
-            AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mClients[(frame.mFlags >> 8) & 15].bitsPerTransfer, mosi_str, 128 );
+            AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mClients[(frame.mFlags >> 4) & 15].bitsPerTransfer, mosi_str, 128 );
         if( miso_used == true )
-            AnalyzerHelpers::GetNumberString( frame.mData2, display_base, mSettings->mClients[(frame.mFlags >> 8) & 15].bitsPerTransfer, miso_str, 128 );
+            AnalyzerHelpers::GetNumberString( frame.mData2, display_base, mSettings->mClients[(frame.mFlags >> 4) & 15].bitsPerTransfer, miso_str, 128 );
 
         if( mosi_used == true && miso_used == true )
         {
