@@ -64,15 +64,15 @@ SpiAnalyzerSettings::SpiAnalyzerSettings()
       mBitsInterfaces[i]->SetNumber(8);
 
       mClockIdleInterfaces[i].reset(new AnalyzerSettingInterfaceNumberList());
-      mClockIdleInterfaces[i]->SetTitleAndTooltip((prefix.str() + "CPOL").c_str(), "");
-      mClockIdleInterfaces[i]->AddNumber(BIT_LOW, "CPOL 0", "");
-      mClockIdleInterfaces[i]->AddNumber(BIT_HIGH, "CPOL 1", "");
+      mClockIdleInterfaces[i]->SetTitleAndTooltip((prefix.str() + "Clock State (CPOL)").c_str(), "");
+      mClockIdleInterfaces[i]->AddNumber(BIT_LOW, "Clock is Low when inactive (CPOL = 0)", "");
+      mClockIdleInterfaces[i]->AddNumber(BIT_HIGH, "Clock is High when inactive (CPOL = 1)", "");
       mClockIdleInterfaces[i]->SetNumber(BIT_LOW);
 
       mPhaseInterfaces[i].reset(new AnalyzerSettingInterfaceNumberList());
-      mPhaseInterfaces[i]->SetTitleAndTooltip((prefix.str() + "CPHA").c_str(), "");
-      mPhaseInterfaces[i]->AddNumber(AnalyzerEnums::LeadingEdge, "CPHA 0", "");
-      mPhaseInterfaces[i]->AddNumber(AnalyzerEnums::TrailingEdge, "CPHA 1", "");
+      mPhaseInterfaces[i]->SetTitleAndTooltip((prefix.str() + "Clock Phase (CPHA)").c_str(), "");
+      mPhaseInterfaces[i]->AddNumber(AnalyzerEnums::LeadingEdge, "Data is Valid on Clock Leading Edge (CPHA = 0)", "");
+      mPhaseInterfaces[i]->AddNumber(AnalyzerEnums::TrailingEdge, "Data is Valid on Clock Trailing Edge (CPHA = 1)", "");
       mPhaseInterfaces[i]->SetNumber(AnalyzerEnums::LeadingEdge);
 
       AddInterface(mShiftInterfaces[i].get());
