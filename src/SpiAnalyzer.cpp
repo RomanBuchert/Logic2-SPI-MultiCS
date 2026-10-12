@@ -20,6 +20,7 @@ void SpiAnalyzer::SetupResults()
       mResults->AddChannelBubblesWillAppearOn(mSettings->mMosiChannel);
    if (mSettings->mMisoChannel != UNDEFINED_CHANNEL)
       mResults->AddChannelBubblesWillAppearOn(mSettings->mMisoChannel);
+   mResults->AddChannelBubblesWillAppearOn(mSettings->mMuxEnableChannel);
 }
 
 void SpiAnalyzer::Setup()
@@ -179,6 +180,12 @@ void SpiAnalyzer::DecodeTransaction(U64 start, U32 cs)
       mResults->AddFrameV2(result, "result", first, last + 1);
       mResults->CommitResults();
    }
+   Frame selection = {};
+   selection.mStartingSampleInclusive = start;
+   selection.mEndingSampleInclusive = mEnable->GetSampleNumber();
+   selection.mData1 = cs;
+   selection.mFlags = 0x02;
+   mResults->AddFrame(selection);
    FrameV2 finish;
    finish.AddByteArray("cs", &csByte, 1);
    mResults->AddFrameV2(finish, "disable", mEnable->GetSampleNumber(),
