@@ -24,6 +24,7 @@ void SpiAnalyzer::SetupResults()
       mResults->AddChannelBubblesWillAppearOn(mSettings->mMosiChannel);
    if (mSettings->mMisoChannel != UNDEFINED_CHANNEL)
       mResults->AddChannelBubblesWillAppearOn(mSettings->mMisoChannel);
+   mResults->AddChannelBubblesWillAppearOn(mSettings->mMuxEnableChannel);
 }
 
 void SpiAnalyzer::SetupChannels()
@@ -114,6 +115,10 @@ void SpiAnalyzer::DecodeSelection(U64 start, U64 end, U32 cs)
          continue;
 
       const U64 sample = mClock->GetSampleNumber();
+      mResults->AddMarker(sample, mClock->GetBitState() == BIT_HIGH
+                                      ? AnalyzerResults::UpArrow
+                                      : AnalyzerResults::DownArrow,
+                          mSettings->mClockChannel);
       if (bitCount == 0)
          firstSample = sample;
       lastSample = sample;
@@ -144,10 +149,6 @@ void SpiAnalyzer::DecodeSelection(U64 start, U64 end, U32 cs)
          misoWord = 0;
       }
    }
-
-   // Mark the active-low selection interval without creating overlapping frames.
-   mResults->AddMarker(start, AnalyzerResults::DownArrow, mSettings->mMuxEnableChannel);
-   mResults->AddMarker(end, AnalyzerResults::UpArrow, mSettings->mMuxEnableChannel);
 
    for (size_t i = 0; i < words.size(); ++i)
       EmitWord(cs, words[i]);
